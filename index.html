@@ -6,7 +6,12 @@
     <title>佳信水产收购单 v4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+        .sync-status { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.9); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; z-index: 1; }
+        .sync-status.syncing { background: #fef3c7; color: #d97706; }
+        .sync-status.synced { background: #d1fae5; color: #059669; }
+        .sync-status.error { background: #fee2e2; color: #dc2626; }
+ margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
             --primary-blue: #2563eb;
@@ -1350,6 +1355,7 @@
         <!-- 首页 -->
         <div id="homePage" class="page active">
             <div class="header">
+                <div class="sync-status syncing" id="syncStatus">⏳ 连接中...</div>
                 <h1>📦 佳信水产</h1>
                 <p>智能订单管理系统</p>
             </div>
@@ -1851,16 +1857,17 @@
     </div>
 
     <script>
-        // 数据存储（已清空历史数据）
+        // JSONBin 云端配置
+        const BIN_ID = '69cbf9ce856a682189e7ecc9';
+        const MASTER_KEY = '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu';
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+        let isOnline = false;
+
+        // 数据存储
         let suppliers = [];
         let customers = [];
         let purchaseOrders = [];
         let salesOrders = [];
-        // 清空本地存储
-        localStorage.removeItem('suppliers');
-        localStorage.removeItem('customers');
-        localStorage.removeItem('purchaseOrders');
-        localStorage.removeItem('salesOrders');
 
         let currentEntityType = '';
         let currentEntityId = null;
@@ -1872,8 +1879,46 @@
         let purchaseRowCount = 0;
         let salesItemCount = 0;
 
+        // 同步状态更新
+        function setSync(status, text) {
+            const el = document.getElementById('syncStatus');
+            if (el) { el.className = 'sync-status ' + status; el.textContent = text; }
+        }
+
+        // 保存到云端
+        async function cloudSave() {
+            if (!isOnline) return false;
+            setSync('syncing', '💾 保存中...');
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+                    body: JSON.stringify({ suppliers, customers, purchaseOrders, salesOrders })
+                });
+                if (res.ok) { setSync('synced', '✅ 已同步'); return true; }
+            } catch(e) {}
+            setSync('error', '❌ 同步失败');
+            return false;
+        }
+
         // 初始化
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
+            setSync('syncing', '⏳ 加载中...');
+            try {
+                const res = await fetch(API_URL, { headers: { 'X-Master-Key': MASTER_KEY } });
+                if (res.ok) {
+                    const data = await res.json();
+                    suppliers = data.record.suppliers || [];
+                    customers = data.record.customers || [];
+                    purchaseOrders = data.record.purchaseOrders || [];
+                    salesOrders = data.record.salesOrders || [];
+                    isOnline = true;
+                    setSync('synced', '✅ 已同步');
+                } else { throw new Error('加载失败'); }
+            } catch(e) {
+                setSync('error', '❌ 离线模式');
+                isOnline = false;
+            }
             updateHomeStats();
             document.getElementById('purchaseDate').value = today();
             document.getElementById('salesDate').value = today();
@@ -2034,7 +2079,7 @@
         }
 
         // 保存采购订单
-        function savePurchaseOrder() {
+        async function savePurchaseOrder() {
             try {
                 console.log('开始生成收购单...');
 
@@ -2112,7 +2157,7 @@
                 console.log('保存订单:', order);
 
                 purchaseOrders.unshift(order);
-                localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+                await cloudSave();
 
                 showPurchaseReceipt(order);
                 initPurchaseTable();
@@ -2304,7 +2349,7 @@
             document.getElementById('salesRemainingAmount').value = (total - paid).toFixed(2);
         }
 
-        function saveSalesOrder() {
+        async function saveSalesOrder() {
             const customerId = document.getElementById('salesCustomer').value;
             if (!customerId) { alert('请选择客户'); return; }
 
@@ -2347,7 +2392,7 @@
             };
 
             salesOrders.unshift(order);
-            localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+            await cloudSave();
 
             showSalesReceipt(order);
             document.getElementById('salesItems').innerHTML = '';
@@ -2727,20 +2772,20 @@
         }
 
         // 删除订单
-        function deleteOrder(orderId, type) {
+        async function deleteOrder(orderId, type) {
             if (!confirm('确定要删除这条订单记录吗？\n\n⚠️ 删除后无法恢复！')) return;
 
             if (type === 'purchase') {
                 const index = purchaseOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     purchaseOrders.splice(index, 1);
-                    localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+                    await cloudSave();
                 }
             } else {
                 const index = salesOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     salesOrders.splice(index, 1);
-                    localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+                    await cloudSave();
                 }
             }
 
@@ -2903,7 +2948,7 @@
             document.getElementById('entityModal').classList.remove('show');
         }
 
-        function saveEntity() {
+        async function saveEntity() {
             const name = document.getElementById('entityName').value.trim();
             const phone = document.getElementById('entityPhone').value.trim();
             const remark = document.getElementById('entityRemark').value.trim();
@@ -2914,12 +2959,12 @@
 
             if (currentEntityType === 'supplier') {
                 suppliers.push(entity);
-                localStorage.setItem('suppliers', JSON.stringify(suppliers));
+                await cloudSave();
                 renderSuppliersList();
                 loadSupplierSelect();
             } else {
                 customers.push(entity);
-                localStorage.setItem('customers', JSON.stringify(customers));
+                await cloudSave();
                 renderCustomersList();
                 loadCustomerSelect();
             }
