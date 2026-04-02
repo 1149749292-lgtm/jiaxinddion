@@ -2054,11 +2054,11 @@
 
     <script>
         // 数据存储（已清空历史数据）
-        let suppliers = [];
-        let customers = [];
-        let purchaseOrders = [];
-        let salesOrders = [];
-        let salesLists = [];
+        let suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
+        let customers = JSON.parse(localStorage.getItem('customers') || '[]');
+        let purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+        let salesOrders = JSON.parse(localStorage.getItem('salesOrders') || '[]');
+        let salesLists = JSON.parse(localStorage.getItem('salesLists') || '[]');
         // 云端同步功能已启用
 
         let isSyncing = false, currentEntityType = '';
