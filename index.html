@@ -156,12 +156,18 @@
             // 修复：删除了 USE_PROXY 和 PROXY_URL
         };
 
+        
         let isSyncing = false, currentEntityType = '', purchaseRowCount = 0;
+        let supplierFilter = 'all', customerFilter = 'all', historyTab = 'purchase';  // 添加缺失的变量
 
         // 修复：静默错误，不显示烦人的提示
         function showSyncStatus(msg, type) {
             const badge = document.getElementById('syncBadge'), text = document.getElementById('syncText');
-            if (!badge) return;
+            if (!badge || !text) return;
+
+            // 重置样式
+            badge.classList.remove('online', 'syncing');
+
             if (type === 'error') {
                 console.log('[同步错误]', msg);
                 badge.style.background = 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
@@ -169,61 +175,206 @@
                 text.textContent = '本地模式';
                 return;
             }
+
             text.textContent = msg;
             badge.style.opacity = '1';
+
             if (type === 'success') {
-                badge.className = 'online';
-                setTimeout(() => badge.style.opacity = '0.8', 2000);
+                badge.classList.add('online');
+                badge.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                setTimeout(() => { badge.style.opacity = '0.8'; }, 2000);
             } else if (type === 'syncing') {
-                badge.className = 'syncing';
+                badge.classList.add('syncing');
+                badge.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+            } else {
+                badge.style.background = 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
             }
         }
 
         function checkEnv() {
-            if (!navigator.onLine) return { can: false };
-            if (!JSONBIN_CONFIG.BIN_ID) return { can: false };
+            // 检查网络状态
+            if (!navigator.onLine) {
+                console.log('[云端] 设备离线');
+                return { can: false, reason: 'offline' };
+            }
+            // 检查 Bin ID
+            const binId = localStorage.getItem('jsonbin_id');
+            if (!binId) {
+                console.log('[云端] 未配置 Bin ID');
+                return { can: false, reason: 'no_bin' };
+            }
+            // 更新配置
+            JSONBIN_CONFIG.BIN_ID = binId;
             return { can: true };
         }
 
         // 修复：直接请求，不使用代理
         async function makeRequest(url, opts = {}) {
-            return fetch(url, { ...opts, headers: { ...opts.headers, 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY } });
+            try {
+                const response = await fetch(url, { 
+                    ...opts, 
+                    headers: { 
+                        ...opts.headers, 
+                        'Content-Type': 'application/json', 
+                        'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY 
+                    } 
+                });
+                return response;
+            } catch (error) {
+                console.error('[请求失败]', error);
+                throw error;
+            }
         }
 
         async function loadFromCloud() {
-            if (!checkEnv().can) { showSyncStatus('本地模式', 'info'); return false; }
-            if (isSyncing) return false; isSyncing = true; showSyncStatus('同步中...', 'syncing');
+            const env = checkEnv();
+            if (!env.can) { 
+                console.log('[云端] 无法同步:', env.reason);
+                showSyncStatus('本地模式', 'info'); 
+                return false; 
+            }
+
+            if (isSyncing) return false; 
+            isSyncing = true; 
+            showSyncStatus('同步中...', 'syncing');
+
             try {
-                if (!JSONBIN_CONFIG.BIN_ID) return await createBin();
+                console.log('[云端] 开始同步，Bin ID:', JSONBIN_CONFIG.BIN_ID);
+
                 const res = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b/${JSONBIN_CONFIG.BIN_ID}/latest`);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = (await res.json()).record;
-                if (data.suppliers) suppliers = data.suppliers; if (data.customers) customers = data.customers;
-                if (data.purchaseOrders) purchaseOrders = data.purchaseOrders; if (data.salesOrders) salesOrders = data.salesOrders;
-                saveAllData(); showSyncStatus('已同步', 'success'); updateHomeStats(); return true;
-            } catch (e) { showSyncStatus('同步失败', 'error'); return false; }
-            finally { isSyncing = false; }
+
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        console.log('[云端] Bin 不存在，创建新 Bin');
+                        return await createBin();
+                    }
+                    throw new Error('HTTP ' + res.status);
+                }
+
+                const result = await res.json();
+                const data = result.record;
+
+                console.log('[云端] 获取数据成功:', Object.keys(data));
+
+                // 合并数据（云端优先）
+                if (data.suppliers) suppliers = data.suppliers; 
+                if (data.customers) customers = data.customers;
+                if (data.purchaseOrders) purchaseOrders = data.purchaseOrders; 
+                if (data.salesOrders) salesOrders = data.salesOrders;
+
+                saveAllData(); 
+                showSyncStatus('已同步', 'success'); 
+                updateHomeStats(); 
+                console.log('[云端] 同步完成 ✓');
+                return true;
+            } catch (e) { 
+                console.error('[云端] 同步失败:', e);
+                showSyncStatus('同步失败', 'error'); 
+                return false; 
+            } finally { 
+                isSyncing = false; 
+            }
         }
 
         async function createBin() {
             try {
-                const data = { suppliers, customers, purchaseOrders, salesOrders, lastSync: new Date().toISOString() };
-                const res = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b`, { method: 'POST', body: JSON.stringify(data) });
-                if (!res.ok) throw new Error('创建失败');
-                const result = await res.json(); JSONBIN_CONFIG.BIN_ID = result.metadata.id;
+                console.log('[云端] 创建新 Bin...');
+                const data = { 
+                    suppliers, 
+                    customers, 
+                    purchaseOrders, 
+                    salesOrders, 
+                    lastSync: new Date().toISOString(),
+                    version: '4.8'
+                };
+
+                const res = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b`, { 
+                    method: 'POST', 
+                    body: JSON.stringify(data) 
+                });
+
+                if (!res.ok) throw new Error('创建失败: ' + res.status);
+
+                const result = await res.json(); 
+                JSONBIN_CONFIG.BIN_ID = result.metadata.id;
                 localStorage.setItem('jsonbin_id', result.metadata.id);
-                showSyncStatus('云端已连接', 'success'); return true;
-            } catch (e) { showSyncStatus('连接失败', 'error'); return false; }
+
+                console.log('[云端] Bin 创建成功:', result.metadata.id);
+                showSyncStatus('云端已连接', 'success'); 
+                return true;
+            } catch (e) { 
+                console.error('[云端] 创建失败:', e);
+                showSyncStatus('连接失败', 'error'); 
+                return false; 
+            }
         }
 
         async function manualSync() {
-            if (!checkEnv().can) { if (confirm('云端同步未配置。是否立即启用？')) await loadFromCloud(); return; }
+            const env = checkEnv();
+
+            if (!env.can) {
+                if (env.reason === 'offline') {
+                    alert('设备处于离线状态，请检查网络连接后重试。');
+                    return;
+                }
+
+                if (env.reason === 'no_bin') {
+                    if (confirm('云端同步尚未配置。是否立即创建云端存储？\n\n这将把当前数据备份到云端，之后可以在其他设备上访问。')) {
+                        await createBin();
+                    }
+                    return;
+                }
+            }
+
             await loadFromCloud();
         }
 
         function saveAllData() {
-            localStorage.setItem('suppliers', JSON.stringify(suppliers)); localStorage.setItem('customers', JSON.stringify(customers));
-            localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders)); localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+            localStorage.setItem('suppliers', JSON.stringify(suppliers)); 
+            localStorage.setItem('customers', JSON.stringify(customers));
+            localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders)); 
+            localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+
+            // 自动同步到云端（如果已配置）
+            const env = checkEnv();
+            if (env.can && !isSyncing) {
+                console.log('[云端] 数据变更，自动同步中...');
+                syncToCloud();
+            }
+        }
+
+        // 新增：主动同步到云端
+        async function syncToCloud() {
+            if (isSyncing) return;
+            isSyncing = true;
+
+            try {
+                const data = { 
+                    suppliers, 
+                    customers, 
+                    purchaseOrders, 
+                    salesOrders, 
+                    lastSync: new Date().toISOString(),
+                    version: '4.8'
+                };
+
+                const res = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b/${JSONBIN_CONFIG.BIN_ID}`, { 
+                    method: 'PUT', 
+                    body: JSON.stringify(data) 
+                });
+
+                if (res.ok) {
+                    console.log('[云端] 同步成功 ✓');
+                    showSyncStatus('已同步', 'success');
+                } else {
+                    throw new Error('同步失败: ' + res.status);
+                }
+            } catch (e) {
+                console.error('[云端] 同步失败:', e);
+                showSyncStatus('同步失败', 'error');
+            } finally {
+                isSyncing = false;
+            }
         }
 
         function showCloudInfo() {
@@ -239,14 +390,43 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('[系统] 佳信水产收购单 v4.8 启动中...');
+
             const today = new Date().toISOString().split('T')[0];
-            const pd = document.getElementById('purchaseDate'); if (pd) pd.value = today;
-            initPurchaseTable(); updateHomeStats();
-            if (checkEnv().can) setTimeout(loadFromCloud, 500); else showSyncStatus('本地模式', 'info');
+            const pd = document.getElementById('purchaseDate'); 
+            if (pd) pd.value = today;
+
+            initPurchaseTable(); 
+            updateHomeStats();
+
+            // 检查云端状态
+            const env = checkEnv();
+            console.log('[系统] 云端状态:', env.can ? '可用' : '不可用 (' + env.reason + ')');
+
+            if (env.can) {
+                setTimeout(() => {
+                    console.log('[系统] 自动同步启动');
+                    loadFromCloud();
+                }, 1000);
+            } else {
+                showSyncStatus('本地模式', 'info');
+            }
         });
 
         function showPage(id) { document.querySelectorAll('.page').forEach(p => p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0, 0); }
         function goHome() { showPage('homePage'); updateHomeStats(); }
+        
+        function goToSalesList() { 
+            alert('销售清单功能开发中...\n\n请使用"原料收购"模块创建采购订单，使用"历史订单"查看所有订单记录。'); 
+        }
+        function goToStatistics() { 
+            showPage('historyOrdersPage'); 
+            document.getElementById('historyStartDate').value = new Date().toISOString().slice(0, 8) + '01'; 
+            document.getElementById('historyEndDate').value = new Date().toISOString().split('T')[0]; 
+            filterHistoryOrders(); 
+        }
+        function quickAddSupplier() { openSupplierModal(); }
+
         function goToPurchase() { showPage('purchasePage'); loadSupplierSelect(); }
         function goToSuppliers() { showPage('suppliersPage'); renderSuppliersList(); }
         function goToCustomers() { showPage('customersPage'); renderCustomersList(); }
@@ -306,24 +486,4 @@
 
         function renderSuppliersList() { const container = document.getElementById('suppliersList'); if (!suppliers.length) { container.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">暂无供应商</div>'; return; } container.innerHTML = suppliers.map(s => { const stats = calcSupplierStats(s.id); const hasOwe = stats.owe > 0; return `<div class="list-item" onclick="alert('供应商: ${s.name}\n总采购: ¥${stats.total.toFixed(2)}\n欠款: ¥${stats.owe.toFixed(2)}\n订单数: ${stats.orders}笔')"><div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span style="font-weight: 700; font-size: 16px;">${s.name} ${hasOwe ? '<span style="background: #fef2f2; color: #ef4444; padding: 4px 10px; border-radius: 20px; font-size: 11px; margin-left: 8px;">欠¥' + stats.owe.toFixed(0) + '</span>' : '<span style="background: #f0fdf4; color: #10b981; padding: 4px 10px; border-radius: 20px; font-size: 11px; margin-left: 8px;">结清</span>'}</span><span style="font-size: 18px; font-weight: 800; color: ${hasOwe ? '#ef4444' : '#10b981'};">¥${stats.total.toFixed(0)}</span></div><div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b;"><span>电话：${s.phone || '无'}</span><span>订单：${stats.orders}笔</span></div></div>`; }).join(''); }
 
-        function calcSupplierStats(id) { const orders = purchaseOrders.filter(o => o.supplierId === id); let total = 0, owe = 0; orders.forEach(o => { total += o.totalAmount; if (o.paymentStatus === 'unpaid') owe += o.totalAmount; else if (o.paymentStatus === 'partial') owe += o.remainingAmount; }); return { total, owe, orders: orders.length }; }
-
-        function renderCustomersList() { const container = document.getElementById('customersList'); if (!customers.length) { container.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">暂无客户</div>'; return; } container.innerHTML = customers.map(c => { const stats = calcCustomerStats(c.id); const hasOwe = stats.owe > 0; return `<div class="list-item" onclick="alert('客户: ${c.name}\n总销售: ¥${stats.total.toFixed(2)}\n欠款: ¥${stats.owe.toFixed(2)}\n订单数: ${stats.orders}笔')"><div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><span style="font-weight: 700; font-size: 16px;">${c.name} ${hasOwe ? '<span style="background: #fef2f2; color: #ef4444; padding: 4px 10px; border-radius: 20px; font-size: 11px; margin-left: 8px;">欠¥' + stats.owe.toFixed(0) + '</span>' : '<span style="background: #f0fdf4; color: #10b981; padding: 4px 10px; border-radius: 20px; font-size: 11px; margin-left: 8px;">结清</span>'}</span><span style="font-size: 18px; font-weight: 800; color: ${hasOwe ? '#ef4444' : '#10b981'};">¥${stats.total.toFixed(0)}</span></div><div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748b;"><span>电话：${c.phone || '无'}</span><span>订单：${stats.orders}笔</span></div></div>`; }).join(''); }
-
-        function calcCustomerStats(id) { const orders = salesOrders.filter(o => o.customerId === id); let total = 0, owe = 0; orders.forEach(o => { total += o.totalAmount; if (o.paymentStatus === 'unpaid') owe += o.totalAmount; else if (o.paymentStatus === 'partial') owe += o.remainingAmount; }); return { total, owe, orders: orders.length }; }
-
-        function openSupplierModal() { currentEntityType = 'supplier'; document.getElementById('entityModalTitle').textContent = '添加供应商'; document.getElementById('entityName').value = ''; document.getElementById('entityPhone').value = ''; document.getElementById('entityRemark').value = ''; document.getElementById('entityModal').classList.add('show'); }
-        function openCustomerModal() { currentEntityType = 'customer'; document.getElementById('entityModalTitle').textContent = '添加客户'; document.getElementById('entityName').value = ''; document.getElementById('entityPhone').value = ''; document.getElementById('entityRemark').value = ''; document.getElementById('entityModal').classList.add('show'); }
-        function closeEntityModal() { document.getElementById('entityModal').classList.remove('show'); }
-        function saveEntity() { const name = document.getElementById('entityName').value.trim(); if (!name) { alert('请输入名称'); return; } const entity = { id: Date.now(), name, phone: document.getElementById('entityPhone').value.trim(), remark: document.getElementById('entityRemark').value.trim() }; if (currentEntityType === 'supplier') { suppliers.push(entity); } else { customers.push(entity); } saveAllData(); closeEntityModal(); if (currentEntityType === 'supplier') { renderSuppliersList(); loadSupplierSelect(); } else { renderCustomersList(); } alert('✓ 已保存：' + name); }
-
-        function filterSuppliers(type, btn) { supplierFilter = type; document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderSuppliersList(); }
-        function filterCustomers(type, btn) { customerFilter = type; document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderCustomersList(); }
-        function searchSuppliers(keyword) { renderSuppliersList(); }
-        function searchCustomers(keyword) { renderCustomersList(); }
-
-        function filterHistoryOrders() { const container = document.getElementById('historyOrdersList'); const orders = historyTab === 'purchase' ? purchaseOrders : salesOrders; const totalAmount = orders.reduce((s, o) => s + o.totalAmount, 0); document.getElementById('historyTotalAmount').textContent = '¥' + totalAmount.toFixed(2); document.getElementById('historyTotalOrders').textContent = orders.length; if (!orders.length) { container.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">暂无订单</div>'; return; } container.innerHTML = orders.map(o => `<div class="order-card"><div style="display: flex; justify-content: space-between; margin-bottom: 14px;"><span style="font-weight: 700; color: #2563eb;">${o.docNumber || o.id}</span><span style="font-size: 13px; color: #64748b;">${o.date}</span></div><div style="font-size: 14px; color: #64748b; margin-bottom: 14px;">${o.product || '采购订单'}</div><div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #e2e8f0;"><span style="font-size: 18px; font-weight: 800;">¥${o.totalAmount.toFixed(2)}</span><span style="padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; background: ${o.paymentStatus === 'unpaid' ? '#fef3c7' : (o.paymentStatus === 'paid' ? '#d1fae5' : '#dbeafe')}; color: ${o.paymentStatus === 'unpaid' ? '#d97706' : (o.paymentStatus === 'paid' ? '#059669' : '#2563eb')};">${o.paymentStatus === 'unpaid' ? '未付款' : (o.paymentStatus === 'paid' ? '已付清' : '部分付款')}</span></div></div>`).join(''); }
-        function switchHistoryTab(type, btn) { historyTab = type; document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); filterHistoryOrders(); }
-    </script>
-</body>
-</html>
+        function calcSupplierStats(id) { const orders = purchaseOrders.filter(o => o.supplierId === id); let total = 0, owe = 0; orders.forEach(o => { total += o.totalAmount; if (o.paymentStatus === 'unpaid') owe += o.totalAmount; els
