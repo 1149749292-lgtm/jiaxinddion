@@ -1587,6 +1587,40 @@
                 width: 2250px;
             }
         }
+
+        /* 同步状态样式 */
+        .sync-status {
+            transition: all 0.3s ease;
+        }
+        .sync-status.info {
+            background: #3b82f6 !important;
+        }
+        .sync-status.success {
+            background: #10b981 !important;
+        }
+        .sync-status.error {
+            background: #ef4444 !important;
+        }
+        .sync-status.syncing {
+            background: #f59e0b !important;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        .sync-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        }
+
+        .sync-error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+        }
+
+        .sync-syncing {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        }
 </style>
 </head>
 <body>
@@ -1594,13 +1628,13 @@
         <!-- 首页 -->
         <div id="homePage" class="page active">
             <div class="header" style="position: relative;">
-                <div style="position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);">
-                    <span style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 2s infinite;"></span>
-                    <span>云端已同步</span>
-                    <span style="cursor: pointer;" onclick="location.reload()">🔄</span>
+                <div id="cloudSyncStatus" class="sync-status" style="display: none; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; z-index: 100;"></div>
+                <div id="syncBadge" style="position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3); cursor: pointer;" onclick="manualSync()" title="点击手动同步">
+                    <span id="syncIndicator" style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 2s infinite;"></span>
+                    <span id="syncText">同步中...</span>
                 </div>
                 <h1>📦 佳信水产</h1>
-                <p>智能订单管理系统</p>
+                <p>智能订单管理系统 <span id="lastSyncTime" style="font-size: 11px; opacity: 0.7; display: block; margin-top: 4px;"></span></p>
             </div>
             <style>
                 @keyframes pulse {
@@ -1659,6 +1693,16 @@
                         <div class="module-icon">📊</div>
                         <div class="module-label">数据统计</div>
                         <div class="module-desc">收支分析</div>
+                    </div>
+                    <div class="module-btn" onclick="showCloudInfo()" style="background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);">
+                        <div class="module-icon">☁️</div>
+                        <div class="module-label">云端状态</div>
+                        <div class="module-desc">查看同步信息</div>
+                    </div>
+                    <div class="module-btn" onclick="exportAllData()" style="background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 100%);">
+                        <div class="module-icon">💾</div>
+                        <div class="module-label">数据备份</div>
+                        <div class="module-desc">导出JSON文件</div>
                     </div>
                 </div>
             </div>
@@ -2049,17 +2093,387 @@
     </div>
 
     <script>
-        // 数据存储（已清空历史数据）
-        let suppliers = [];
-        let customers = [];
-        let purchaseOrders = [];
-        let salesOrders = [];
-        let salesLists = [];
-        // 清空本地存储
-        localStorage.removeItem('suppliers');
-        localStorage.removeItem('customers');
-        localStorage.removeItem('purchaseOrders');
-        localStorage.removeItem('salesOrders');
+        // 数据存储 - 优先从localStorage加载，确保数据不丢失
+        let suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
+        let customers = JSON.parse(localStorage.getItem('customers') || '[]');
+        let purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+        let salesOrders = JSON.parse(localStorage.getItem('salesOrders') || '[]');
+        let salesLists = JSON.parse(localStorage.getItem('salesLists') || '[]');
+
+        // JSONBin 云端配置 - 您的密钥
+        const JSONBIN_CONFIG = {
+            MASTER_KEY: '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu',
+            BASE_URL: 'https://api.jsonbin.io/v3',
+            BIN_ID: localStorage.getItem('jsonbin_id') || null  // 首次使用需创建
+        };
+
+
+
+        // ============================================
+        // 通用HTTP请求工具（兼容file://协议）
+        // ============================================
+
+        // 检测是否在HTTP/HTTPS环境
+        function isHttpEnvironment() {
+            return window.location.protocol === 'http:' || window.location.protocol === 'https:';
+        }
+
+        // 通用请求函数（自动选择fetch或XHR）
+        async function makeRequest(url, options = {}) {
+            // 优先使用fetch（如果在HTTP环境）
+            if (isHttpEnvironment() && window.fetch) {
+                try {
+                    const response = await fetch(url, options);
+                    return response;
+                } catch (e) {
+                    console.log('Fetch失败，尝试XHR:', e.message);
+                }
+            }
+
+            // 备用：使用XMLHttpRequest
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open(options.method || 'GET', url, true);
+
+                // 设置请求头
+                if (options.headers) {
+                    Object.keys(options.headers).forEach(key => {
+                        xhr.setRequestHeader(key, options.headers[key]);
+                    });
+                }
+
+                xhr.onload = function() {
+                    resolve({
+                        ok: xhr.status >= 200 && xhr.status < 300,
+                        status: xhr.status,
+                        json: () => Promise.resolve(JSON.parse(xhr.responseText)),
+                        text: () => Promise.resolve(xhr.responseText)
+                    });
+                };
+
+                xhr.onerror = () => reject(new Error('XHR请求失败'));
+                xhr.ontimeout = () => reject(new Error('请求超时'));
+
+                xhr.send(options.body || null);
+            });
+        }
+
+        // ============================================
+        // 云端同步功能 - JSONBin.io
+        // ============================================
+
+        // 显示同步状态
+        function showSyncStatus(message, type = 'info') {
+            const badge = document.getElementById('syncBadge');
+            const text = document.getElementById('syncText');
+            const indicator = document.getElementById('syncIndicator');
+            const lastSyncEl = document.getElementById('lastSyncTime');
+
+            if (text) text.textContent = message;
+
+            if (badge) {
+                badge.className = 'sync-' + type;
+                if (type === 'success') {
+                    badge.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                    indicator.style.animation = 'none';
+                } else if (type === 'error') {
+                    badge.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                    indicator.style.animation = 'none';
+                } else if (type === 'syncing') {
+                    badge.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                    indicator.style.animation = 'pulse 2s infinite';
+                }
+            }
+
+            if (lastSyncEl && type === 'success') {
+                lastSyncEl.textContent = '上次同步: ' + new Date().toLocaleTimeString();
+            }
+        }
+
+        // 创建新的 Bin（首次使用）
+        async function createCloudBin() {
+            try {
+                showSyncStatus('创建云端存储...', 'syncing');
+
+                const data = {
+                    suppliers: suppliers,
+                    customers: customers,
+                    purchaseOrders: purchaseOrders,
+                    salesOrders: salesOrders,
+                    salesLists: salesLists,
+                    lastSync: new Date().toISOString(),
+                    deviceId: 'jiashui_' + Date.now()
+                };
+
+                console.log('创建云端存储，数据大小:', JSON.stringify(data).length, '字符');
+
+                const response = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY,
+                        'X-Bin-Private': 'true',
+                        'X-Bin-Name': '佳信水产订单数据_' + new Date().toLocaleDateString()
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error('HTTP ' + response.status + ': ' + errorText);
+                }
+
+                const result = await response.json();
+                console.log('云端创建成功:', result);
+
+                // 保存bin id到本地
+                JSONBIN_CONFIG.BIN_ID = result.metadata.id;
+                localStorage.setItem('jsonbin_id', result.metadata.id);
+
+                showSyncStatus('✓ 云端已连接', 'success');
+                return result.metadata.id;
+            } catch (error) {
+                console.error('创建云端存储失败:', error);
+                showSyncStatus('✗ 连接失败:' + error.message.substring(0, 30), 'error');
+                return null;
+            }
+        }
+
+        // 从云端加载数据
+        async function loadFromCloud() {
+            try {
+                showSyncStatus('正在同步...', 'syncing');
+
+                // 检查是否在线
+                if (!navigator.onLine) {
+                    showSyncStatus('离线模式，使用本地数据', 'error');
+                    return false;
+                }
+
+                if (!JSONBIN_CONFIG.BIN_ID) {
+                    console.log('首次使用，创建云端存储...');
+                    return await createCloudBin();
+                }
+
+                console.log('正在从云端加载，BIN ID:', JSONBIN_CONFIG.BIN_ID);
+
+                const response = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b/${JSONBIN_CONFIG.BIN_ID}/latest`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        console.log('云端存储不存在，创建新的...');
+                        return await createCloudBin();
+                    }
+                    const errorText = await response.text();
+                    throw new Error('HTTP ' + response.status + ': ' + errorText);
+                }
+
+                const result = await response.json();
+                const cloudData = result.record;
+
+                console.log('从云端加载数据成功:', {
+                    suppliers: cloudData.suppliers?.length || 0,
+                    customers: cloudData.customers?.length || 0,
+                    purchaseOrders: cloudData.purchaseOrders?.length || 0,
+                    salesOrders: cloudData.salesOrders?.length || 0
+                });
+
+                // 合并云端数据到本地（云端优先）
+                let hasUpdate = false;
+                if (cloudData.suppliers && cloudData.suppliers.length > 0) {
+                    suppliers = cloudData.suppliers;
+                    hasUpdate = true;
+                }
+                if (cloudData.customers && cloudData.customers.length > 0) {
+                    customers = cloudData.customers;
+                    hasUpdate = true;
+                }
+                if (cloudData.purchaseOrders && cloudData.purchaseOrders.length > 0) {
+                    purchaseOrders = cloudData.purchaseOrders;
+                    hasUpdate = true;
+                }
+                if (cloudData.salesOrders && cloudData.salesOrders.length > 0) {
+                    salesOrders = cloudData.salesOrders;
+                    hasUpdate = true;
+                }
+                if (cloudData.salesLists && cloudData.salesLists.length > 0) {
+                    salesLists = cloudData.salesLists;
+                    hasUpdate = true;
+                }
+
+                // 保存到本地
+                saveAllData();
+
+                showSyncStatus('✓ 同步成功', 'success');
+
+                if (hasUpdate) {
+                    // 刷新UI
+                    updateHomeStats();
+                    if (document.getElementById('suppliersList')) renderSuppliersList();
+                    if (document.getElementById('customersList')) renderCustomersList();
+                }
+
+                return true;
+            } catch (error) {
+                console.error('同步云端数据失败:', error);
+                let errorMsg = error.message;
+                if (errorMsg.includes('fetch') || errorMsg.includes('CORS') || errorMsg.includes('XHR')) {
+                    errorMsg = '本地文件限制，使用本地数据';
+                }
+                showSyncStatus('✗ ' + errorMsg.substring(0, 25), 'error');
+                return false;
+            }
+        }
+
+        // 保存数据到云端（防抖处理）
+        let syncTimeout = null;
+        let isSyncing = false;
+
+        async function saveToCloud(immediate = false) {
+            if (isSyncing) {
+                console.log('同步进行中，跳过');
+                return;
+            }
+
+            // 检查是否在线
+            if (!navigator.onLine) {
+                showSyncStatus('离线模式，仅保存本地', 'error');
+                return;
+            }
+
+            const doSync = async () => {
+                if (!JSONBIN_CONFIG.BIN_ID) {
+                    console.log('首次使用，创建云端存储...');
+                    await createCloudBin();
+                    return;
+                }
+
+                isSyncing = true;
+                showSyncStatus('保存中...', 'syncing');
+
+                try {
+                    const data = {
+                        suppliers: suppliers,
+                        customers: customers,
+                        purchaseOrders: purchaseOrders,
+                        salesOrders: salesOrders,
+                        salesLists: salesLists,
+                        lastSync: new Date().toISOString(),
+                        deviceId: localStorage.getItem('device_id') || 'jiashui_' + Date.now()
+                    };
+
+                    console.log('正在保存到云端，数据大小:', JSON.stringify(data).length, '字符');
+
+                    const response = await makeRequest(`${JSONBIN_CONFIG.BASE_URL}/b/${JSONBIN_CONFIG.BIN_ID}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': JSONBIN_CONFIG.MASTER_KEY
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error('HTTP ' + response.status + ': ' + errorText);
+                    }
+
+                    const result = await response.json();
+                    console.log('云端保存成功:', result);
+                    showSyncStatus('✓ 已保存到云端', 'success');
+                } catch (error) {
+                    console.error('保存到云端失败:', error);
+                    let errorMsg = error.message;
+                    if (errorMsg.includes('fetch') || errorMsg.includes('CORS') || errorMsg.includes('XHR')) {
+                        errorMsg = '本地文件限制，数据已存本地';
+                    }
+                    showSyncStatus('✗ ' + errorMsg.substring(0, 25), 'error');
+                } finally {
+                    isSyncing = false;
+                }
+            };
+
+            // 清除之前的定时器
+            if (syncTimeout) clearTimeout(syncTimeout);
+
+            if (immediate) {
+                await doSync();
+            } else {
+                // 延迟2秒同步，避免频繁请求
+                syncTimeout = setTimeout(doSync, 2000);
+            }
+        }
+
+        // 保存所有数据到本地
+        function saveAllData() {
+            localStorage.setItem('suppliers', JSON.stringify(suppliers));
+            localStorage.setItem('customers', JSON.stringify(customers));
+            localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+            localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+            localStorage.setItem('salesLists', JSON.stringify(salesLists));
+            localStorage.setItem('lastLocalSave', new Date().toISOString());
+        }
+
+        // 手动同步按钮功能
+        async function manualSync() {
+            if (isSyncing) return;
+            await loadFromCloud();
+            await saveToCloud(true);
+            // 刷新当前页面数据
+            updateHomeStats();
+            if (document.getElementById('suppliersList')) renderSuppliersList();
+            if (document.getElementById('customersList')) renderCustomersList();
+            if (document.getElementById('historyOrdersList')) filterHistoryOrders();
+        }
+
+        // 初始化时加载云端数据
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('页面加载完成，开始初始化...');
+            console.log('运行环境:', window.location.protocol);
+
+            // 先显示加载状态
+            const syncBadge = document.getElementById('syncBadge');
+            const syncText = document.getElementById('syncText');
+            if (syncText) syncText.textContent = '初始化中...';
+
+            // 检测运行环境
+            if (!isHttpEnvironment()) {
+                console.warn('检测到本地文件环境(file://)，云端同步可能受限');
+                showSyncStatus('本地模式，仅保存本地', 'error');
+                // 仍然尝试同步，但使用XHR
+            }
+
+            // 执行云端同步（带重试）
+            let retryCount = 0;
+            const maxRetries = 2;
+
+            while (retryCount < maxRetries) {
+                const success = await loadFromCloud();
+                if (success || JSONBIN_CONFIG.BIN_ID) break;
+                retryCount++;
+                if (retryCount < maxRetries) {
+                    console.log('同步失败，' + (3-retryCount) + '秒后重试...');
+                    await new Promise(r => setTimeout(r, 3000));
+                }
+            }
+
+            // 更新UI
+            updateHomeStats();
+            if (document.getElementById('purchaseSupplier')) loadSupplierSelect();
+            if (document.getElementById('listCustomer')) loadCustomerSelectForList();
+
+            // 设置定期自动同步（每5分钟）
+            setInterval(() => {
+                if (navigator.onLine) saveToCloud();
+            }, 300000);
+
+            console.log('初始化完成');
+        });
 
         let currentEntityType = '';
         let currentEntityId = null;
@@ -2315,12 +2729,13 @@
                 console.log('保存订单:', order);
 
                 purchaseOrders.unshift(order);
-                localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+                saveAllData(); // 保存到本地
+                saveToCloud(true); // 立即同步到云端
 
                 showPurchaseReceipt(order);
                 initPurchaseTable();
                 updateHomeStats();
-                alert('收购单生成成功！');
+                alert('收购单生成成功！已同步到云端');
             } catch (e) {
                 console.error('生成收购单出错:', e);
                 alert('生成失败: ' + e.message);
@@ -2807,15 +3222,17 @@
                 const index = purchaseOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     purchaseOrders.splice(index, 1);
-                    localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
                 }
             } else {
                 const index = salesOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     salesOrders.splice(index, 1);
-                    localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
                 }
             }
+
+            // 保存到本地和云端
+            saveAllData();
+            saveToCloud(true);
 
             const orderCard = document.getElementById(`order-${orderId}`);
             if (orderCard) {
@@ -2828,6 +3245,81 @@
                     updateHomeStats();
                 }, 300);
             }
+        }
+
+
+        // ============================================
+        // 数据备份与恢复功能
+        // ============================================
+
+        // 导出所有数据为JSON文件
+        function exportAllData() {
+            const data = {
+                suppliers: suppliers,
+                customers: customers,
+                purchaseOrders: purchaseOrders,
+                salesOrders: salesOrders,
+                salesLists: salesLists,
+                exportTime: new Date().toISOString(),
+                version: '2.0'
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '佳信水产数据备份_' + new Date().toLocaleDateString() + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert('✓ 数据已导出到下载文件夹');
+        }
+
+        // 从文件导入数据
+        function importDataFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+
+                    if (confirm('确定要导入数据吗？这将覆盖当前所有数据！\n\n建议先导出当前数据作为备份。')) {
+                        if (data.suppliers) suppliers = data.suppliers;
+                        if (data.customers) customers = data.customers;
+                        if (data.purchaseOrders) purchaseOrders = data.purchaseOrders;
+                        if (data.salesOrders) salesOrders = data.salesOrders;
+                        if (data.salesLists) salesLists = data.salesLists;
+
+                        saveAllData();
+                        saveToCloud(true);
+                        updateHomeStats();
+
+                        alert('✓ 数据导入成功！已同步到云端');
+                        location.reload();
+                    }
+                } catch (err) {
+                    alert('✗ 文件格式错误：' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 查看云端存储信息
+        function showCloudInfo() {
+            const binId = localStorage.getItem('jsonbin_id');
+            const lastSync = localStorage.getItem('lastLocalSave');
+
+            let info = '【云端存储信息】\n\n';
+            info += 'Bin ID: ' + (binId || '未创建') + '\n';
+            info += '上次同步: ' + (lastSync ? new Date(lastSync).toLocaleString() : '从未同步') + '\n\n';
+            info += '本地数据统计：\n';
+            info += '- 供应商: ' + suppliers.length + ' 个\n';
+            info += '- 客户: ' + customers.length + ' 个\n';
+            info += '- 采购订单: ' + purchaseOrders.length + ' 笔\n';
+            info += '- 销售订单: ' + salesOrders.length + ' 笔\n';
+
+            alert(info);
         }
 
         // 数据统计
@@ -3215,9 +3707,11 @@
 
             // 保存到销售订单中（使用salesOrders数组）
             salesOrders.unshift(order);
-            localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+            saveAllData(); // 保存到本地
+            saveToCloud(true); // 立即同步到云端
 
             showSalesListReceipt(order);
+            alert('销售清单生成成功！已同步到云端');
         }
 
         function showSalesListReceipt(order) {
