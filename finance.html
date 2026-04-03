@@ -1,0 +1,2294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>佳信水产进销存财务系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif; }
+        .glass { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-active { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important; color: white !important; border-color: #2563eb !important; font-weight: 600; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-partial { background: #dbeafe; color: #1e40af; }
+        .status-paid { background: #d1fae5; color: #065f46; }
+        .status-cancelled { background: #fee2e2; color: #991b1b; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 16px; max-width: 900px; width: 90%; max-height: 90vh; overflow-y: auto; }
+
+        /* 收购单样式 */
+        .purchase-receipt-wrapper {
+            background: #ffffff;
+            padding: 20px;
+            font-family: 'KaiTi', 'STKaiti', '楷体', serif;
+            color: #000;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .purchase-receipt-header { text-align: center; border-bottom: 2px solid #334155; padding-bottom: 16px; margin-bottom: 16px; }
+        .purchase-receipt-header h2 { font-size: 22px; letter-spacing: 2px; margin-bottom: 12px; font-family: 'SimHei', '黑体', sans-serif; color: #1e3a5f; font-weight: 800; }
+        .purchase-receipt-header h3 { font-size: 20px; letter-spacing: 12px; font-family: 'SimHei', sans-serif; color: #1e40af; font-weight: 700; display: inline-block; padding: 8px 32px; border-radius: 8px; border: 2px solid #3b82f6; }
+        .purchase-receipt-info { margin: 20px 10px; font-size: 14px; line-height: 2; }
+        .purchase-receipt-info-row { display: flex; justify-content: space-between; margin: 6px 0; }
+        .purchase-receipt-table { width: 100%; border-collapse: collapse; margin: 16px 0; border: 2px solid #334155; }
+        .purchase-receipt-table th, .purchase-receipt-table td { border: 1px solid #334155; padding: 10px; text-align: center; font-size: 14px; }
+        .purchase-receipt-table th { background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); font-weight: 700; }
+        .purchase-receipt-table .row-num { background: #f8fafc; font-weight: 700; width: 40px; }
+        .purchase-receipt-summary { margin: 20px 10px; padding: 16px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 2px solid #334155; border-radius: 12px; }
+        .purchase-receipt-footer { margin: 20px 10px; display: flex; justify-content: space-between; font-size: 14px; color: #64748b; }
+
+        /* 销售清单样式 */
+        .sales-list-wrapper { background: white; width: 900px; margin: 0 auto; padding: 0; font-family: "SimSun", "宋体", serif; color: #000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 13px; }
+        .sales-list-main-title { text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 12px; padding: 25px 0 20px 0; margin: 0 30px; border-bottom: 2px solid #000; }
+        .sales-list-info-section { display: flex; justify-content: space-between; padding: 15px 30px; font-size: 13px; line-height: 1.8; }
+        .sales-list-info-left { display: flex; flex-direction: column; flex: 1; }
+        .sales-list-info-right { display: flex; flex-direction: column; flex: 1; padding-left: 50px; text-align: left; }
+        .sales-list-info-label { display: inline-block; min-width: 80px; }
+        .sales-list-main-table { width: calc(100% - 60px); margin: 0 30px; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        .sales-list-main-table th { background: #a8ddd8; border: 1.5px solid #333; padding: 8px 4px; text-align: center; font-weight: normal; }
+        .sales-list-main-table td { border: 1.5px solid #333; padding: 6px 4px; text-align: center; height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sales-list-main-table .td-seq { width: 50px; }
+        .sales-list-main-table .td-product { width: 110px; }
+        .sales-list-main-table .td-spec { width: 80px; }
+        .sales-list-main-table .td-brand { width: 90px; }
+        .sales-list-main-table .td-qty { width: 70px; }
+        .sales-list-main-table .td-weight { width: 80px; }
+        .sales-list-main-table .td-price { width: 80px; }
+        .sales-list-main-table .td-amount { width: 100px; }
+        .sales-list-main-table .td-remark { width: 90px; }
+        .sales-list-total-row td { border: 1.5px solid #333; padding: 8px 4px; }
+        .sales-list-total-label { text-align: left; padding-left: 15px !important; }
+        .sales-list-chinese-row td { border: 1.5px solid #333; border-top: none; padding: 10px 4px; }
+        .sales-list-chinese-label { text-align: left; padding-left: 15px !important; width: 100px; }
+        .sales-list-chinese-amount { color: #c00; font-weight: bold; font-size: 14px; text-align: left; padding-left: 10px !important; }
+        .sales-list-number-label { text-align: right; padding-right: 10px !important; width: 80px; }
+        .sales-list-number-amount { color: #c00; font-weight: bold; font-size: 16px; text-align: center; }
+        .sales-list-bottom-section { display: flex; width: calc(100% - 60px); margin: 0 30px 30px 30px; border: 1.5px solid #333; border-top: none; font-size: 12px; }
+        .sales-list-payment-area { width: 380px; padding: 12px 15px; border-right: 1.5px solid #333; }
+        .sales-list-payment-title { font-weight: bold; margin-bottom: 8px; font-size: 13px; }
+        .sales-list-payment-content { line-height: 2; font-size: 12px; }
+        .sales-list-notice-area { flex: 1; padding: 12px 15px; }
+        .sales-list-notice-title { font-weight: bold; margin-bottom: 8px; font-size: 13px; }
+        .sales-list-notice-content { line-height: 1.8; font-size: 12px; }
+
+        .preview-modal-content { max-width: 1000px; width: 95%; padding: 0; overflow: hidden; }
+        .preview-modal-header { padding: 20px; background: #f8f9fa; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+        .preview-modal-body { padding: 20px; background: #e8e8e8; overflow-x: auto; max-height: 70vh; overflow-y: auto; }
+        .btn-download { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .btn-close-modal { background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); color: #475569; border: none; padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); z-index: 3000; justify-content: center; align-items: center; flex-direction: column; }
+        .loading-overlay.show { display: flex; }
+        .loading-spinner { width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.3); border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    
+        /* 拖拽排序样式 */
+        .sales-item-row {
+            cursor: move;
+            position: relative;
+        }
+        .sales-item-row.dragging {
+            opacity: 0.5;
+            border: 2px dashed #3b82f6;
+        }
+        .sales-item-row.drag-over {
+            border-top: 3px solid #3b82f6;
+        }
+        .drag-handle {
+            cursor: grab;
+            padding: 0 8px;
+            color: #94a3b8;
+            font-size: 16px;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        /* 右上角同步提示 */
+        .sync-toast {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 9999;
+            opacity: 0;
+            transform: translateX(100px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        .sync-toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .sync-toast.syncing {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+        }
+        .sync-toast.error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+        }
+        .sync-toast-icon {
+            width: 18px;
+            height: 18px;
+        }
+        .sync-toast.syncing .sync-toast-icon {
+            animation: spin 1s linear infinite;
+        }
+
+        /* 图片上传预览样式 */
+        .image-preview-item {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+        }
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .image-preview-item .remove-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .image-preview-item .remove-btn:hover {
+            background: rgba(220, 38, 38, 1);
+        }
+        /* 查看图片模态框 */
+        .image-viewer-modal .modal-content {
+            max-width: 95vw;
+            max-height: 95vh;
+            background: transparent;
+            box-shadow: none;
+        }
+        .image-viewer-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.9);
+            border-radius: 12px;
+        }
+        .image-viewer-item {
+            max-width: 100%;
+            max-height: 80vh;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .image-viewer-single {
+            max-width: 90vw;
+            max-height: 85vh;
+        }
+        .image-thumbnail-btn {
+            background: #f1f5f9;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 8px 16px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #475569;
+            transition: all 0.2s;
+        }
+        .image-thumbnail-btn:hover {
+            background: #e2e8f0;
+            border-color: #cbd5e1;
+        }
+        .image-thumbnail-btn.has-image {
+            background: #dbeafe;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        /* 同步状态样式 - 与仓库系统一致 */
+        .sync-status { 
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            font-size: 12px; 
+            display: flex; 
+            align-items: center; 
+            gap: 6px; 
+            border: 1px solid #cbd5e1; 
+            font-weight: 500; 
+            color: #475569;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .sync-status.syncing { 
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); 
+            border-color: #93c5fd;
+            color: #1e40af;
+        }
+        .sync-status.synced { 
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); 
+            border-color: #6ee7b7;
+            color: #065f46;
+        }
+        .sync-status.error { 
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); 
+            border-color: #fca5a5;
+            color: #991b1b;
+        }
+
+        /* 手机端表格优化 */
+        @media (max-width: 640px) {
+            table {
+                font-size: 12px;
+            }
+            th, td {
+                padding: 8px 4px !important;
+                white-space: nowrap;
+            }
+            .px-6 {
+                padding-left: 8px !important;
+                padding-right: 8px !important;
+            }
+            /* 隐藏部分列 */
+            th:nth-child(2), td:nth-child(2) {
+                max-width: 80px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+        }
+
+        /* 导航栏响应式 */
+        @media (min-width: 768px) {
+            nav {
+                display: flex !important;
+                gap: 2rem !important;
+            }
+            nav button {
+                border: none !important;
+                background: transparent !important;
+                border-bottom: 2px solid transparent !important;
+                border-radius: 0 !important;
+            }
+            nav button.tab-active {
+                background: transparent !important;
+                color: #3b82f6 !important;
+                border-bottom: 3px solid #3b82f6 !important;
+                box-shadow: none !important;
+            }
+        }
+        .sync-status.syncing { background: rgba(245, 158, 11, 0.3); }
+        .sync-status.synced { background: rgba(16, 185, 129, 0.3); }
+        .sync-status.error { background: rgba(239, 68, 68, 0.3); }
+        .sync-dot { 
+            width: 8px; 
+            height: 8px; 
+            border-radius: 50%; 
+            background: currentColor; 
+        }
+        .sync-status.syncing .sync-dot { 
+            animation: pulse 1.5s infinite; 
+        }
+        @keyframes pulse { 
+            0%, 100% { opacity: 1; transform: scale(1); } 
+            50% { opacity: 0.5; transform: scale(0.8); } 
+        }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 密码验证层 -->
+    <div id="passwordLayer" class="fixed inset-0 bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800">佳信水产财务系统</h2>
+                <p class="text-gray-500 mt-2">请输入访问密码</p>
+            </div>
+            <input type="password" id="passwordInput" placeholder="输入密码..." class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none text-center text-lg">
+            <button onclick="checkPassword()" class="w-full mt-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all">进入系统</button>
+        </div>
+    </div>
+
+    <!-- 主应用 -->
+    <div id="app" class="hidden">
+    <!-- 同步提示 -->
+    <div id="syncToast" class="sync-toast">
+        <svg class="sync-toast-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        <span id="syncToastText">数据已同步</span>
+    </div>
+
+        <header class="glass sticky top-0 z-40 border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <!-- 桌面端布局 -->
+                <div class="hidden md:flex justify-between items-center h-16">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-800">佳信水产财务系统</h1>
+                            <p class="text-xs text-gray-500">v2.0 | 云端同步</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <div class="sync-status" id="syncStatus">
+                            <span class="sync-dot"></span>
+                            <span id="syncText">正在连接...</span>
+                        </div>
+                        <button onclick="syncData()" class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2 rounded-lg font-medium flex items-center space-x-2 hover:shadow-lg transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <span>同步数据</span>
+                        </button>
+                    </div>
+                </div>
+                <!-- 手机端布局 -->
+                <div class="md:hidden py-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                            </div>
+                            <div>
+                                <h1 class="text-lg font-bold text-gray-800">佳信水产财务</h1>
+                                <p class="text-xs text-gray-500">v2.0 | 云端同步</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="sync-status" id="syncStatus">
+                                <span class="sync-dot"></span>
+                                <span id="syncText">连接中</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-400">上次同步: <span id="lastSyncTime">--</span></span>
+                        <button onclick="syncData()" class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center space-x-1 hover:shadow-lg transition-all">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <span>同步</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="bg-white border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4">
+                <nav class="grid grid-cols-3 gap-2 py-3">
+                    <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 tab-active bg-blue-50 text-blue-600 border border-blue-200">📊 仪表盘</button>
+                    <button onclick="switchTab('purchase')" id="tab-purchase" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 bg-white text-gray-600 border border-gray-200">📥 采购管理</button>
+                    <button onclick="switchTab('sales')" id="tab-sales" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 bg-white text-gray-600 border border-gray-200">📤 销售管理</button>
+                    <button onclick="switchTab('customers')" id="tab-customers" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 bg-white text-gray-600 border border-gray-200">👥 客户/供应商</button>
+                    <button onclick="switchTab('finance')" id="tab-finance" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 bg-white text-gray-600 border border-gray-200">💵 收付款</button>
+                    <button onclick="switchTab('reports')" id="tab-reports" class="tab-btn py-3 px-2 rounded-lg text-center text-sm font-medium transition-all hover:bg-blue-50 bg-white text-gray-600 border border-gray-200">📋 财务报表</button>
+                </nav>
+            </div>
+        </div>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- 仪表盘 -->
+            <div id="view-dashboard" class="view-section">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500">今日收入</p>
+                                <p class="text-2xl font-bold text-green-600" id="todayIncome">¥0</p>
+                            </div>
+                            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500">今日支出</p>
+                                <p class="text-2xl font-bold text-red-600" id="todayExpense">¥0</p>
+                            </div>
+                            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500">客户欠款</p>
+                                <p class="text-2xl font-bold text-blue-600" id="totalReceivable">¥0</p>
+                            </div>
+                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-500">供应商欠款</p>
+                                <p class="text-2xl font-bold text-orange-600" id="totalPayable">¥0</p>
+                            </div>
+                            <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 采购管理 -->
+            <div id="view-purchase" class="view-section hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">采购管理</h2>
+                    <button onclick="openPurchaseModal()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        <span>新增采购单</span>
+                    </button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="p-4 border-b border-gray-200 flex space-x-4">
+                        <input type="text" id="purchaseSearch" placeholder="搜索单号/供应商..." class="px-4 py-2 border rounded-lg" onkeyup="renderPurchaseList()">
+                        <select id="purchaseStatusFilter" class="px-4 py-2 border rounded-lg" onchange="renderPurchaseList()">
+                            <option value="">全部状态</option>
+                            <option value="pending">待付款</option>
+                            <option value="partial">部分付款</option>
+                            <option value="paid">已付清</option>
+                        </select>
+                    </div>
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">单号</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">供应商</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">金额</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchaseList" class="divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 销售管理 -->
+            <div id="view-sales" class="view-section hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">销售管理</h2>
+                    <button onclick="openSalesModal()" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        <span>新增销售单</span>
+                    </button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="p-4 border-b border-gray-200 flex space-x-4">
+                        <input type="text" id="salesSearch" placeholder="搜索单号/客户..." class="px-4 py-2 border rounded-lg" onkeyup="renderSalesList()">
+                        <select id="salesStatusFilter" class="px-4 py-2 border rounded-lg" onchange="renderSalesList()">
+                            <option value="">全部状态</option>
+                            <option value="pending">待收款</option>
+                            <option value="partial">部分收款</option>
+                            <option value="paid">已结清</option>
+                        </select>
+                    </div>
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">单号</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">客户</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">金额</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salesList" class="divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 客户/供应商 -->
+            <div id="view-customers" class="view-section hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">客户管理</h2>
+                            <button onclick="openCustomerModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ 新增客户</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <table class="w-full">
+                                <thead class="bg-gray-50">
+                                    <tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">客户名称</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">欠款</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">操作</th></tr>
+                                </thead>
+                                <tbody id="customerList" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">供应商管理</h2>
+                            <button onclick="openSupplierModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700">+ 新增供应商</button>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                            <table class="w-full">
+                                <thead class="bg-gray-50">
+                                    <tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">供应商名称</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">欠款</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500">操作</th></tr>
+                                </thead>
+                                <tbody id="supplierList" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 收付款 -->
+            <div id="view-finance" class="view-section hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">收付款登记</h2>
+                    <div class="space-x-3">
+                        <button onclick="openPaymentModal('income')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">+ 收款</button>
+                        <button onclick="openPaymentModal('expense')" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">+ 付款</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">日期</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">类型</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">往来单位</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">金额</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500">备注</th></tr>
+                        </thead>
+                        <tbody id="transactionList" class="divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 财务报表 -->
+            <div id="view-reports" class="view-section hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold mb-2">本月毛利</h3>
+                        <p class="text-3xl font-bold text-blue-600" id="monthProfit">¥0</p>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold mb-2">本月销售额</h3>
+                        <p class="text-3xl font-bold text-green-600" id="monthSales">¥0</p>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold mb-2">本月采购额</h3>
+                        <p class="text-3xl font-bold text-orange-600" id="monthPurchase">¥0</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+    <!-- 采购单录入模态框 -->
+    <div id="purchaseModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-xl font-bold">新增采购单（收购单）</h3>
+                <button onclick="closeModal('purchaseModal')" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="p-6">
+                <div style="background: white; border: 2px solid #334155; border-radius: 12px; padding: 20px; font-family: 'KaiTi', serif;">
+                    <div style="text-align: center; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 16px;">
+                        <h2 style="font-size: 22px; letter-spacing: 2px; margin-bottom: 8px; font-family: 'SimHei', sans-serif; color: #1e3a5f; font-weight: 800;">佳信水产有限公司</h2>
+                        <h3 style="font-size: 18px; letter-spacing: 8px; font-family: 'SimHei', sans-serif; color: #1e40af; font-weight: 700; display: inline-block; padding: 6px 24px; border: 2px solid #3b82f6;">收 购 单</h3>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0;">
+                        <div>日期: <input type="date" id="purchaseDate" style="border: none; border-bottom: 1px solid #333; width: 130px; text-align: center; font-family: 'KaiTi', serif;"></div>
+                        <div>编号: <input type="text" id="purchaseDocNo" value="001" style="border: none; border-bottom: 1px solid #333; width: 60px; text-align: center; font-family: 'KaiTi', serif;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0;">
+                        <div>品名: <input type="text" id="purchaseProduct" value="黑虎虾" style="border: none; border-bottom: 1px solid #333; width: 100px; text-align: center; font-family: 'KaiTi', serif;"></div>
+                        <div>供应商: 
+                            <select id="purchaseSupplier" style="border: none; border-bottom: 1px solid #333; min-width: 120px; font-family: 'KaiTi', serif;">
+                                <option value="">请选择</option>
+                            </select>
+                            <button onclick="quickAddSupplier()" style="background: #10b981; color: white; border: none; padding: 4px 10px; border-radius: 4px; margin-left: 5px;">+</button>
+                        </div>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; border: 2px solid #334155;">
+                        <thead>
+                            <tr style="background: #f1f5f9;">
+                                <th style="border: 1px solid #334155; padding: 8px; width: 40px;">序号</th>
+                                <th style="border: 1px solid #334155; padding: 8px;">数量（箱×斤）</th>
+                                <th style="border: 1px solid #334155; padding: 8px;">数量（箱×斤）</th>
+                                <th style="border: 1px solid #334155; padding: 8px;">数量（箱×斤）</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchaseTableBody"></tbody>
+                        <tfoot>
+                            <tr style="background: #fffde7; font-weight: bold;">
+                                <td style="border: 1px solid #334155; padding: 8px;">合计</td>
+                                <td id="col1Total" style="border: 1px solid #334155; padding: 8px; text-align: center;">0斤</td>
+                                <td id="col2Total" style="border: 1px solid #334155; padding: 8px; text-align: center;">0斤</td>
+                                <td id="col3Total" style="border: 1px solid #334155; padding: 8px; text-align: center;">0斤</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <button onclick="clearAllPurchaseRows()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 14px;">🗑️ 一键清空</button>
+                        <button onclick="addPurchaseRow()" style="background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 14px;">+ 添加行</button>
+                    </div>
+                    <div style="border: 2px solid #334155; padding: 16px; margin-top: 16px; background: #f8fafc; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span>合计：<span id="purchaseTotalJin" style="font-size: 20px; color: #dc2626; font-weight: bold;">0</span> 斤</span>
+                            <span>单价：<input type="number" id="purchasePrice" value="22.50" step="0.01" style="border: none; border-bottom: 1px solid #333; width: 60px; text-align: center; color: #dc2626;" onchange="calculatePurchaseTotal()"> 元/斤</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-top: 1px dashed #999; padding-top: 10px; margin-top: 10px;">
+                            <span style="font-size: 16px; font-weight: bold;">合计金额</span>
+                            <span id="purchaseTotalAmount" style="font-size: 24px; color: #dc2626; font-weight: 800;">¥0.00</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; padding: 16px; background: #f8fafc; border-radius: 8px;">
+                        <div style="font-weight: bold; margin-bottom: 8px;">付款状态</div>
+                        <select id="purchasePaymentStatus" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 8px;" onchange="updatePurchasePayment()">
+                            <option value="unpaid">未付款</option>
+                            <option value="paid">已付款</option>
+                            <option value="partial">部分付款</option>
+                        </select>
+                        <div id="purchasePaymentInputs" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <input type="number" id="purchasePaidAmount" placeholder="已付金额" oninput="calculatePurchaseRemaining()">
+                            <input type="number" id="purchaseRemainingAmount" placeholder="剩余欠款" readonly style="background: #f5f5f5;">
+                        </div>
+                    </div>
+                </div>
+                
+                    <div style="margin-top: 16px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 2px dashed #cbd5e1;">
+                        <div style="font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            上传原始手写订单图片
+                        </div>
+                        <input type="file" id="purchaseImageInput" accept="image/*" multiple style="display: none;" onchange="handlePurchaseImages(this)">
+                        <div id="purchaseImagePreview" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;"></div>
+                        <button onclick="document.getElementById('purchaseImageInput').click()" style="background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center;">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            选择图片（可多选）
+                        </button>
+                        <p style="font-size: 12px; color: #64748b; margin-top: 8px; text-align: center;">支持 JPG、PNG 格式，最多上传 5 张</p>
+                    </div>
+<button onclick="savePurchaseOrder()" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; margin-top: 20px; cursor: pointer;">生成收购单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 销售单录入模态框 -->
+    <div id="salesModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-xl font-bold">新增销售单（销售清单）</h3>
+                <button onclick="closeModal('salesModal')" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="p-6">
+                <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                            <label style="display: block; font-size: 14px; color: #666; margin-bottom: 4px;">客户名称 *</label>
+                            <div style="display: flex; gap: 8px;">
+                                <select id="salesCustomer" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px;" onchange="fillCustomerInfo()">
+                                    <option value="">请选择客户</option>
+                                </select>
+                                <button onclick="quickAddCustomer()" style="background: #10b981; color: white; border: none; padding: 8px 12px; border-radius: 6px;">+</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 14px; color: #666; margin-bottom: 4px;">发货日期 *</label>
+                            <input type="date" id="salesDate" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div>
+                            <label style="display: block; font-size: 14px; color: #666; margin-bottom: 4px;">电话号码</label>
+                            <input type="text" id="salesCustomerPhone" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;" placeholder="选填">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 14px; color: #666; margin-bottom: 4px;">收货地址</label>
+                            <input type="text" id="salesCustomerAddress" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;" placeholder="选填">
+                        </div>
+                    </div>
+                </div>
+                <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <span style="font-size: 16px; font-weight: bold;">产品明细</span>
+                        <button onclick="addSalesItem()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px;">+ 添加产品</button>
+                    </div>
+                    <div id="salesItems"></div>
+                </div>
+                <button onclick="saveSalesOrder()" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">生成销售清单</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 收购单预览模态框 -->
+    <div id="purchaseReceiptModal" class="modal">
+        <div class="modal-content preview-modal-content">
+            <div class="preview-modal-header">
+                <h3 class="text-xl font-bold">收购单预览</h3>
+                <div>
+                    <button class="btn-download" onclick="downloadPurchaseReceipt()">📥 保存图片</button>
+                    <button class="btn-close-modal" onclick="closeModal('purchaseReceiptModal')" style="margin-left: 10px;">关闭</button>
+                </div>
+            </div>
+            <div class="preview-modal-body">
+                <div id="purchaseReceiptImages" style="margin-bottom: 20px; display: none;">
+                    <div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                        <div style="font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #1e40af;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2z"></path></svg>
+                            原始手写订单图片
+                        </div>
+                        <div id="purchaseReceiptImagesList" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                    </div>
+                </div>
+                <div id="purchaseReceipt" class="purchase-receipt-wrapper">
+                    <div class="purchase-receipt-header">
+                        <h2>佳信水产有限公司</h2>
+                        <h3>收 购 单</h3>
+                    </div>
+                    <div class="purchase-receipt-info">
+                        <div class="purchase-receipt-info-row">
+                            <span><b>日期：</b><span id="receiptDate">-</span></span>
+                            <span><b>编号：</b><span id="receiptNo">001</span></span>
+                        </div>
+                        <div class="purchase-receipt-info-row">
+                            <span><b>品名：</b><span id="receiptProduct">黑虎虾</span></span>
+                            <span><b>供应商：</b><span id="receiptSupplier">-</span></span>
+                        </div>
+                    </div>
+                    <table class="purchase-receipt-table">
+                        <thead>
+                            <tr><th class="row-num">序号</th><th>数量（箱×斤）</th><th>数量（箱×斤）</th><th>数量（箱×斤）</th></tr>
+                        </thead>
+                        <tbody id="receiptTableBody"></tbody>
+                        <tfoot>
+                            <tr>
+                                <td style="background: #f9f9f9; font-weight: bold;">合计</td>
+                                <td id="receiptCol1Total" style="color: #dc2626; font-weight: 700;">0斤</td>
+                                <td id="receiptCol2Total" style="color: #dc2626; font-weight: 700;">0斤</td>
+                                <td id="receiptCol3Total" style="color: #dc2626; font-weight: 700;">0斤</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="purchase-receipt-summary">
+                        <div class="purchase-receipt-summary-row">
+                            <span><b>总重量：<span id="receiptTotalWeight" style="color: #dc2626;">0</span> 斤</b></span>
+                            <span><b>单价：<span id="receiptPrice" style="color: #dc2626;">22.50</span> 元/斤</b></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 2px solid #334155; padding-top: 12px; margin-top: 12px;">
+                            <span style="font-size: 18px; font-weight: bold;">合计金额</span>
+                            <span id="receiptTotalAmount" style="font-size: 28px; color: #dc2626; font-weight: 800;">¥0.00</span>
+                        </div>
+                    </div>
+                    <div class="purchase-receipt-footer">
+                        <span>📞 电话：18077761212</span>
+                        <span>✍️ 采购方：郑佳宝</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 销售清单预览模态框 -->
+    <div id="salesReceiptModal" class="modal">
+        <div class="modal-content preview-modal-content">
+            <div class="preview-modal-header">
+                <h3 class="text-xl font-bold">销售清单预览</h3>
+                <div>
+                    <button class="btn-download" onclick="downloadSalesReceipt()">📥 保存图片</button>
+                    <button class="btn-close-modal" onclick="closeModal('salesReceiptModal')" style="margin-left: 10px;">关闭</button>
+                </div>
+            </div>
+            <div class="preview-modal-body">
+                <div id="salesReceipt"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 客户/供应商模态框 -->
+    <div id="partyModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-xl font-bold" id="partyModalTitle">新增客户</h3>
+                <button onclick="closeModal('partyModal')" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="partyType" value="customer">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">名称</label>
+                    <input type="text" id="partyName" class="w-full px-3 py-2 border rounded-lg" placeholder="请输入名称">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">电话</label>
+                    <input type="text" id="partyPhone" class="w-full px-3 py-2 border rounded-lg" placeholder="请输入电话">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">备注/地址</label>
+                    <input type="text" id="partyRemark" class="w-full px-3 py-2 border rounded-lg" placeholder="可选">
+                </div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button onclick="closeModal('partyModal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">取消</button>
+                    <button onclick="saveParty()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 收付款模态框 -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-xl font-bold" id="paymentModalTitle">收款登记</h3>
+                <button onclick="closeModal('paymentModal')" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">往来单位</label>
+                    <select id="paymentParty" class="w-full px-3 py-2 border rounded-lg"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">金额</label>
+                    <input type="number" id="paymentAmount" class="w-full px-3 py-2 border rounded-lg" placeholder="0.00">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                    <input type="date" id="paymentDate" class="w-full px-3 py-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                    <input type="text" id="paymentRemark" class="w-full px-3 py-2 border rounded-lg" placeholder="可选">
+                </div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button onclick="closeModal('paymentModal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">取消</button>
+                    <button onclick="savePayment()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载动画 -->
+    <div class="loading-overlay" id="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">生成图片中...</div>
+    </div>
+
+    <script>
+
+
+                // ==================== 配置 ====================
+        const CONFIG = {
+            BIN_ID: '69cf0acbaaba882197bd1c53',
+            API_KEY: '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu',
+            PASSWORD: 'jiaxin123',
+            DELETE_PASSWORD: '0326'
+        };
+
+        // 删除操作相关变量
+        let deleteTarget = { type: '', orderId: '' };
+
+        // ==================== 数据存储 ====================
+        let data = {
+            suppliers: [],
+            customers: [],
+            purchaseOrders: [],
+            salesOrders: [],
+            transactions: [],
+            lastPurchaseDocNumber: 0
+        };
+
+        // 网络状态管理（与仓库系统完全一致）
+        let isOnline = false;
+        let isSyncing = false;
+
+        let purchaseRowCount = 0;
+        let salesItemCount = 0;
+
+        // ==================== 云端同步核心（修复跨设备同步问题） ====================
+
+        /**
+         * 从云端获取数据 - 关键修复：添加 cache: 'no-store' 防止浏览器缓存
+         */
+        async function fetchData() {
+            // 创建超时 Promise - 3秒超时，更快反馈
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('连接超时')), 3000);
+            });
+
+            try {
+                // 使用 meta 端点代替 latest，获取基本信息更快
+                const timestamp = Date.now();
+                const fetchPromise = fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}?_t=${timestamp}`, {
+                    method: 'GET',
+                    headers: { 
+                        'X-Master-Key': CONFIG.API_KEY,
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    },
+                    cache: 'no-store'
+                });
+
+                // 使用 Promise.race 实现超时控制
+                const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                return result.record || {};
+            } catch (error) {
+                console.error('获取云端数据失败:', error);
+                throw error;
+            }
+        }
+
+        /**
+         * 保存数据到云端
+         */
+        async function saveData() {
+            // 始终保存到本地缓存
+            localStorage.setItem('finance_data_cache', JSON.stringify(data));
+
+            if (!isOnline) { 
+                console.log('离线模式，仅保存到本地');
+                updateSyncStatus('error', '离线模式，已保存本地');
+                return; 
+            }
+
+            if (isSyncing) {
+                console.log('同步已在进行中，跳过重复请求');
+                return;
+            }
+
+            isSyncing = true;
+            updateSyncStatus('syncing', '正在同步...');
+
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.BIN_ID}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': CONFIG.API_KEY,
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                updateSyncStatus('synced', '已同步到云端');
+                isSyncing = false;
+            } catch (error) {
+                console.error('同步失败:', error);
+                updateSyncStatus('error', '同步失败，已保存本地');
+                isSyncing = false;
+                throw error;
+            }
+        }
+
+        /**
+         * 用户触发的同步（使用状态栏显示，无弹窗）
+         */
+        async function syncData() {
+            if (isSyncing) {
+                return;  // 已在同步中，不重复操作
+            }
+
+            try {
+                await saveData();
+            } catch (error) {
+                console.error('同步失败:', error);
+            }
+        }
+
+        /**
+         * 静默同步（无提示，用于后台操作）
+         */
+        async function syncDataSilent() {
+            if (!isOnline || isSyncing) return;
+
+            try {
+                await saveData();
+            } catch (error) {
+                console.log('静默同步失败:', error);
+            }
+        }
+
+        /**
+         * 更新同步状态显示 - 与仓库系统完全一致，使用状态栏
+         */
+        function updateSyncStatus(status, text) {
+            const el = document.getElementById('syncStatus');
+            const txt = document.getElementById('syncText');
+            if (el && txt) {
+                el.className = 'sync-status ' + status;
+                txt.textContent = text;
+            }
+        }
+
+        // ==================== 初始化 ====================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedPassword = localStorage.getItem('finance_password');
+            if (savedPassword === CONFIG.PASSWORD) {
+                document.getElementById('passwordLayer').style.display = 'none';
+                document.getElementById('app').classList.remove('hidden');
+                initApp();
+            }
+        });
+
+        function checkPassword() {
+            const input = document.getElementById('passwordInput').value;
+            if (input === CONFIG.PASSWORD) {
+                localStorage.setItem('finance_password', input);
+                document.getElementById('passwordLayer').style.display = 'none';
+                document.getElementById('app').classList.remove('hidden');
+                initApp();
+            } else {
+                alert('密码错误');
+            }
+        }
+
+        /**
+         * 初始化应用 - 与仓库系统 init 完全一致
+         */
+        function initApp() {
+            // 设置默认日期
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('purchaseDate').value = today;
+            document.getElementById('salesDate').value = today;
+            document.getElementById('paymentDate').value = today;
+
+            // 先尝试从本地缓存加载数据，立即显示界面
+            const cachedData = localStorage.getItem('finance_data_cache');
+            let hasCache = false;
+            if (cachedData) {
+                try {
+                    const parsed = JSON.parse(cachedData);
+                    data.suppliers = parsed.suppliers || [];
+                    data.customers = parsed.customers || [];
+                    data.purchaseOrders = parsed.purchaseOrders || [];
+                    data.salesOrders = parsed.salesOrders || [];
+                    data.transactions = parsed.transactions || [];
+                    data.lastPurchaseDocNumber = parsed.lastPurchaseDocNumber || 0;
+                    hasCache = true;
+                    updateSyncStatus('synced', '已加载本地数据');
+                } catch(e) {
+                    updateSyncStatus('error', '加载失败');
+                }
+            } else {
+                updateSyncStatus('syncing', '首次使用，准备同步...');
+            }
+
+            // 立即初始化界面（不等待网络）
+            initPurchaseTable();
+            updateAllViews();
+
+            // 后台同步云端数据（不阻塞界面）
+            setTimeout(() => {
+                syncToCloud();
+            }, 100);
+        }
+
+        // 后台同步函数
+        async function syncToCloud() {
+            // 如果已经在同步中，不要重复
+            if (isSyncing) return;
+            isSyncing = true;
+
+            updateSyncStatus('syncing', '正在连接云端...');
+            try {
+                const cloudData = await fetchData();
+                if (cloudData && Object.keys(cloudData).length > 0) {
+                    data.suppliers = cloudData.suppliers || [];
+                    data.customers = cloudData.customers || [];
+                    data.purchaseOrders = cloudData.purchaseOrders || [];
+                    data.salesOrders = cloudData.salesOrders || [];
+                    data.transactions = cloudData.transactions || [];
+                    data.lastPurchaseDocNumber = cloudData.lastPurchaseDocNumber || 0;
+                    localStorage.setItem('finance_data_cache', JSON.stringify(data));
+                    isOnline = true;
+                    updateSyncStatus('synced', '已同步到云端');
+                    updateAllViews();
+                } else {
+                    throw new Error('无数据');
+                }
+            } catch (err) {
+                console.error('云端同步失败:', err);
+                isOnline = false;
+                updateSyncStatus('error', '云端未连接');
+            } finally {
+                isSyncing = false;
+            }
+        }
+
+        // ==================== 视图切换 ====================// ==================== 视图切换 ====================
+        function switchTab(tabName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('tab-active');
+                el.classList.remove('bg-blue-50', 'text-blue-600', 'border-blue-200');
+                el.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+            });
+
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            const activeTab = document.getElementById(`tab-${tabName}`);
+            activeTab.classList.add('tab-active');
+            activeTab.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+
+            updateView(tabName);
+        }
+
+        function updateView(viewName) {
+            switch(viewName) {
+                case 'dashboard': updateDashboard(); break;
+                case 'purchase': renderPurchaseList(); break;
+                case 'sales': renderSalesList(); break;
+                case 'customers': renderPartyList(); break;
+                case 'finance': renderTransactionList(); break;
+                case 'reports': updateReports(); break;
+            }
+        }
+
+        function updateAllViews() {
+            updateDashboard();
+            renderPurchaseList();
+            renderSalesList();
+            renderPartyList();
+            renderTransactionList();
+            updateReports();
+        }
+
+        // ==================== 仪表盘 ====================
+        function updateDashboard() {
+            const today = new Date().toISOString().split('T')[0];
+
+            const todayTransactions = data.transactions.filter(t => t.date === today);
+            const todayIncome = todayTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const todayExpense = todayTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+            document.getElementById('todayIncome').textContent = `¥${todayIncome.toFixed(0)}`;
+            document.getElementById('todayExpense').textContent = `¥${todayExpense.toFixed(0)}`;
+
+            const totalReceivable = data.customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+            const totalPayable = data.suppliers.reduce((sum, s) => sum + (s.balance || 0), 0);
+
+            document.getElementById('totalReceivable').textContent = `¥${totalReceivable.toFixed(0)}`;
+            document.getElementById('totalPayable').textContent = `¥${totalPayable.toFixed(0)}`;
+        }
+
+        // ==================== 采购管理（收购单） ====================
+        function initPurchaseTable() {
+            const tbody = document.getElementById('purchaseTableBody');
+            tbody.innerHTML = '';
+            purchaseRowCount = 0;
+            for (let i = 0; i < 8; i++) {
+                addPurchaseRow();
+            }
+        }
+
+        function addPurchaseRow() {
+            const tbody = document.getElementById('purchaseTableBody');
+            purchaseRowCount++;
+            const tr = document.createElement('tr');
+            tr.id = 'purchase-row-' + purchaseRowCount;
+            tr.innerHTML = `
+                <td style="border: 1px solid #334155; padding: 8px; text-align: center; background: #f8fafc; font-weight: bold;">
+                    ${purchaseRowCount}
+                    <button onclick="deletePurchaseRow(${purchaseRowCount})" style="background: #ef4444; color: white; border: none; width: 18px; height: 18px; border-radius: 50%; font-size: 12px; cursor: pointer; margin-left: 4px; line-height: 1;">×</button>
+                </td>
+                <td style="border: 1px solid #334155; padding: 8px;"><input type="text" class="purchase-input" data-row="${purchaseRowCount}" data-col="1" placeholder="箱×斤" style="width: 100%; border: none; text-align: center; font-family: 'KaiTi', serif;" onchange="calculatePurchase()"></td>
+                <td style="border: 1px solid #334155; padding: 8px;"><input type="text" class="purchase-input" data-row="${purchaseRowCount}" data-col="2" placeholder="箱×斤" style="width: 100%; border: none; text-align: center; font-family: 'KaiTi', serif;" onchange="calculatePurchase()"></td>
+                <td style="border: 1px solid #334155; padding: 8px;"><input type="text" class="purchase-input" data-row="${purchaseRowCount}" data-col="3" placeholder="箱×斤" style="width: 100%; border: none; text-align: center; font-family: 'KaiTi', serif;" onchange="calculatePurchase()"></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function deletePurchaseRow(rowNum) {
+            const row = document.getElementById('purchase-row-' + rowNum);
+            if (row) {
+                row.remove();
+                renumberPurchaseRows();
+                calculatePurchase();
+            }
+        }
+
+        function renumberPurchaseRows() {
+            const tbody = document.getElementById('purchaseTableBody');
+            const rows = tbody.querySelectorAll('tr');
+            rows.forEach((row, index) => {
+                const newNum = index + 1;
+                row.id = 'purchase-row-' + newNum;
+
+                // 更新序号显示 - 使用 textContent 只更新文本节点
+                const firstCell = row.cells[0];
+                // 找到按钮
+                const btn = firstCell.querySelector('button');
+                if (btn) {
+                    // 移除按钮，更新文本，再添加回去
+                    firstCell.removeChild(btn);
+                    firstCell.textContent = newNum;
+                    firstCell.appendChild(btn);
+                    // 更新按钮的 onclick
+                    btn.setAttribute('onclick', 'deletePurchaseRow(' + newNum + ')');
+                } else {
+                    firstCell.textContent = newNum;
+                }
+
+                // 更新输入框的data-row属性（保留原有值）
+                const inputs = row.querySelectorAll('input');
+                inputs.forEach(input => {
+                    input.setAttribute('data-row', newNum);
+                });
+            });
+            purchaseRowCount = rows.length;
+        }
+
+        function clearAllPurchaseRows() {
+            if (confirm('确定要清空所有数据吗？')) {
+                const tbody = document.getElementById('purchaseTableBody');
+                tbody.innerHTML = '';
+                purchaseRowCount = 0;
+                // 重新添加8行空行
+                for (let i = 0; i < 8; i++) {
+                    addPurchaseRow();
+                }
+                calculatePurchase();
+            }
+        }
+
+        function parseSpec(str) {
+            if (!str) return null;
+            str = str.trim();
+            const match = str.match(/^(\d+)\s*[×\*xX]\s*(\d+)$/);
+            if (match) {
+                return { box: parseInt(match[1]), perBox: parseInt(match[2]), total: parseInt(match[1]) * parseInt(match[2]) };
+            }
+            return null;
+        }
+
+        function calculatePurchase() {
+            const inputs = document.querySelectorAll('.purchase-input');
+            let total = 0, col1 = 0, col2 = 0, col3 = 0;
+
+            inputs.forEach(input => {
+                const value = input.value.trim();
+                if (!value) return;
+
+                const spec = parseSpec(value);
+                const col = input.getAttribute('data-col');
+                if (spec && spec.total > 0) {
+                    total += spec.total;
+                    if (col === '1') col1 += spec.total;
+                    else if (col === '2') col2 += spec.total;
+                    else if (col === '3') col3 += spec.total;
+                }
+            });
+
+            // 更新总重量显示
+            const totalJinEl = document.getElementById('purchaseTotalJin');
+            const totalJin2El = document.getElementById('purchaseTotalJin2');
+            const col1El = document.getElementById('col1Total');
+            const col2El = document.getElementById('col2Total');
+            const col3El = document.getElementById('col3Total');
+
+            if (totalJinEl) totalJinEl.textContent = total;
+            if (totalJin2El) totalJin2El.textContent = total;
+            if (col1El) col1El.textContent = col1 + '斤';
+            if (col2El) col2El.textContent = col2 + '斤';
+            if (col3El) col3El.textContent = col3 + '斤';
+
+            calculatePurchaseTotal();
+        }
+
+        function calculatePurchaseTotal() {
+            const totalJin = parseInt(document.getElementById('purchaseTotalJin').textContent) || 0;
+            const price = parseFloat(document.getElementById('purchasePrice').value) || 0;
+            const amount = totalJin * price;
+            document.getElementById('purchaseTotalAmount').textContent = '¥' + amount.toFixed(2);
+        }
+
+        function updatePurchasePayment() {
+            const status = document.getElementById('purchasePaymentStatus').value;
+            document.getElementById('purchasePaymentInputs').style.display = status === 'partial' ? 'grid' : 'none';
+        }
+
+        function calculatePurchaseRemaining() {
+            const total = parseFloat(document.getElementById('purchaseTotalAmount').textContent.replace('¥', '')) || 0;
+            const paid = parseFloat(document.getElementById('purchasePaidAmount').value) || 0;
+            document.getElementById('purchaseRemainingAmount').value = (total - paid).toFixed(2);
+        }
+
+        function openPurchaseModal() {
+            const select = document.getElementById('purchaseSupplier');
+            select.innerHTML = '<option value="">请选择供应商</option>' + 
+                data.suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+            // 自动递增收购单编号
+            const lastNum = data.lastPurchaseDocNumber || 0;
+            const newNum = lastNum + 1;
+            const docNo = String(newNum).padStart(3, '0');
+            document.getElementById('purchaseDocNo').value = docNo;
+
+            document.getElementById('purchaseModal').classList.add('active');
+        }
+
+        function savePurchaseOrder() {
+            const supplierId = document.getElementById('purchaseSupplier').value;
+            if (!supplierId) { alert('请选择供应商'); return; }
+
+            const supplier = data.suppliers.find(s => s.id === supplierId);
+            const items = [];
+
+            // 获取上传的图片
+            const images = purchaseImages.length > 0 ? [...purchaseImages] : [];
+
+            document.querySelectorAll('.purchase-input').forEach(input => {
+                const value = input.value.trim();
+                if (value) {
+                    const spec = parseSpec(value);
+                    if (spec) {
+                        items.push({
+                            row: parseInt(input.getAttribute('data-row')),
+                            col: parseInt(input.getAttribute('data-col')),
+                            box: spec.box, perBox: spec.perBox, total: spec.total
+                        });
+                    }
+                }
+            });
+
+            if (items.length === 0) { alert('请至少填写一个产品'); return; }
+
+            const totalWeight = items.reduce((sum, i) => sum + i.total, 0);
+            const price = parseFloat(document.getElementById('purchasePrice').value) || 0;
+            const totalAmount = totalWeight * price;
+            const paymentStatus = document.getElementById('purchasePaymentStatus').value;
+            const paidAmount = paymentStatus === 'paid' ? totalAmount : (paymentStatus === 'partial' ? parseFloat(document.getElementById('purchasePaidAmount').value) || 0 : 0);
+
+            const docNumber = document.getElementById('purchaseDocNo').value;
+            const order = {
+                id: 'PO' + Date.now(),
+                docNumber: docNumber,
+                date: document.getElementById('purchaseDate').value,
+                supplierId,
+                supplierName: supplier.name,
+                product: document.getElementById('purchaseProduct').value,
+                items, totalWeight, price, totalAmount,
+                paymentStatus, paidAmount,
+                remainingAmount: totalAmount - paidAmount,
+                images: images
+            };
+
+            data.purchaseOrders.unshift(order);
+            supplier.balance = (supplier.balance || 0) + order.remainingAmount;
+
+            // 更新最后使用的编号（提取数字部分）
+            const numMatch = docNumber.match(/\d+/);
+            if (numMatch) {
+                const usedNum = parseInt(numMatch[0]);
+                if (usedNum > (data.lastPurchaseDocNumber || 0)) {
+                    data.lastPurchaseDocNumber = usedNum;
+                }
+            }
+
+            syncData();
+            showPurchaseReceipt(order);
+            closeModal('purchaseModal');
+            renderPurchaseList();
+            clearPurchaseImages(); // 清空已上传的图片
+        }
+
+        function showPurchaseReceipt(order) {
+            document.getElementById('receiptDate').textContent = order.date;
+            document.getElementById('receiptNo').textContent = order.docNumber;
+            document.getElementById('receiptProduct').textContent = order.product;
+            document.getElementById('receiptSupplier').textContent = order.supplierName;
+            document.getElementById('receiptTotalWeight').textContent = order.totalWeight;
+            document.getElementById('receiptPrice').textContent = order.price.toFixed(2);
+            document.getElementById('receiptTotalAmount').textContent = '¥' + order.totalAmount.toFixed(2);
+
+            // 显示图片
+            const imagesContainer = document.getElementById('purchaseReceiptImages');
+            const imagesList = document.getElementById('purchaseReceiptImagesList');
+            if (order.images && order.images.length > 0) {
+                imagesContainer.style.display = 'block';
+                imagesList.innerHTML = order.images.map((img, idx) => `
+                    <div style="width: 120px; height: 120px; border-radius: 8px; overflow: hidden; border: 2px solid #e2e8f0; cursor: pointer;" onclick="viewOrderImages('${order.id}', 'purchase')">
+                        <img src="${img.data}" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                `).join('');
+            } else {
+                imagesContainer.style.display = 'none';
+                imagesList.innerHTML = '';
+            }
+
+            const rowData = {};
+            for (let i = 1; i <= 8; i++) rowData[i] = { 1: '', 2: '', 3: '' };
+            order.items.forEach(item => {
+                if (item.row && item.col) rowData[item.row][item.col] = item.box + '×' + item.perBox;
+            });
+
+            let col1Total = 0, col2Total = 0, col3Total = 0;
+            order.items.forEach(item => {
+                if (item.col === 1) col1Total += item.total;
+                if (item.col === 2) col2Total += item.total;
+                if (item.col === 3) col3Total += item.total;
+            });
+
+            const tbody = document.getElementById('receiptTableBody');
+            tbody.innerHTML = '';
+            for (let i = 1; i <= 8; i++) {
+                tbody.innerHTML += `<tr><td style="border: 1px solid #334155; padding: 8px; background: #f9f9f9; font-weight: bold;">${i}</td><td style="border: 1px solid #334155; padding: 8px;">${rowData[i][1]}</td><td style="border: 1px solid #334155; padding: 8px;">${rowData[i][2]}</td><td style="border: 1px solid #334155; padding: 8px;">${rowData[i][3]}</td></tr>`;
+            }
+
+            document.getElementById('receiptCol1Total').textContent = col1Total + '斤';
+            document.getElementById('receiptCol2Total').textContent = col2Total + '斤';
+            document.getElementById('receiptCol3Total').textContent = col3Total + '斤';
+
+            document.getElementById('purchaseReceiptModal').classList.add('active');
+        }
+
+        function downloadPurchaseReceipt() {
+            document.getElementById('loading').classList.add('show');
+            html2canvas(document.getElementById('purchaseReceipt'), { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = '收购单_' + document.getElementById('receiptNo').textContent + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                document.getElementById('loading').classList.remove('show');
+            });
+        }
+
+        function renderPurchaseList() {
+            const search = document.getElementById('purchaseSearch').value.toLowerCase();
+            const statusFilter = document.getElementById('purchaseStatusFilter').value;
+
+            let orders = data.purchaseOrders;
+            if (search) orders = orders.filter(o => o.id.toLowerCase().includes(search) || o.supplierName.toLowerCase().includes(search));
+            if (statusFilter) orders = orders.filter(o => o.paymentStatus === statusFilter);
+
+            const tbody = document.getElementById('purchaseList');
+            tbody.innerHTML = orders.map(order => {
+                const statusText = { unpaid: '未付款', paid: '已付款', partial: '部分付款' }[order.paymentStatus];
+                const statusClass = { unpaid: 'status-pending', paid: 'status-paid', partial: 'status-partial' }[order.paymentStatus];
+                const hasImages = order.images && order.images.length > 0;
+                return `<tr>
+                    <td class="px-6 py-4 text-sm font-medium">${order.docNumber}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${order.date}</td>
+                    <td class="px-6 py-4 text-sm">${order.supplierName}</td>
+                    <td class="px-6 py-4 text-sm font-medium">¥${order.totalAmount.toFixed(2)}</td>
+                    <td class="px-6 py-4"><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td class="px-6 py-4 text-sm space-x-2">
+                        <button onclick="viewPurchaseReceiptById('${order.id}')" class="text-blue-600 hover:underline">查看</button>
+                        ${hasImages ? `<button onclick="viewOrderImages('${order.id}', 'purchase')" class="image-thumbnail-btn has-image" title="查看原始手写单（${order.images.length}张）">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2z"></path></svg>
+                            手写单(${order.images.length})
+                        </button>` : '<span class="text-gray-400 text-xs">无图片</span>'}
+                        <button onclick="addPurchasePayment('${order.id}')" class="text-green-600 hover:underline">付款</button>
+                        <button onclick="showDeleteConfirm('purchase', '${order.id}')" class="text-red-600 hover:underline">删除</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function viewPurchaseReceiptById(orderId) {
+            const order = data.purchaseOrders.find(o => o.id === orderId);
+            if (order) showPurchaseReceipt(order);
+        }
+
+        async function addPurchasePayment(orderId) {
+            const order = data.purchaseOrders.find(o => o.id === orderId);
+            if (!order) return;
+            const amount = prompt(`请输入付款金额 (未付: ¥${order.remainingAmount.toFixed(2)}):`);
+            if (!amount || isNaN(amount)) return;
+            const payAmount = parseFloat(amount);
+            if (payAmount <= 0 || payAmount > order.remainingAmount) { alert('金额无效'); return; }
+
+            order.paidAmount += payAmount;
+            order.remainingAmount -= payAmount;
+            order.paymentStatus = order.remainingAmount <= 0 ? 'paid' : 'partial';
+
+            const supplier = data.suppliers.find(s => s.id === order.supplierId);
+            if (supplier) supplier.balance -= payAmount;
+
+            data.transactions.push({
+                id: 'TRX' + Date.now(), date: new Date().toISOString().split('T')[0],
+                type: 'expense', partyId: order.supplierId, partyName: order.supplierName,
+                amount: payAmount, remark: `采购单 ${order.docNumber} 付款`
+            });
+
+            await syncDataSilent();
+            renderPurchaseList();
+        }
+
+
+        // ==================== 销售管理（销售清单） ====================
+        function openSalesModal() {
+            const select = document.getElementById('salesCustomer');
+            select.innerHTML = '<option value="">请选择客户</option>' + 
+                data.customers.map(c => `<option value="${c.id}" data-phone="${c.phone || ''}" data-address="${c.remark || ''}">${c.name}</option>`).join('');
+            document.getElementById('salesItems').innerHTML = '';
+            salesItemCount = 0;
+            addSalesItem();
+            document.getElementById('salesModal').classList.add('active');
+            // 初始化拖拽功能
+            setTimeout(initDragAndDrop, 100);
+        }
+
+        function fillCustomerInfo() {
+            const select = document.getElementById('salesCustomer');
+            const option = select.options[select.selectedIndex];
+            if (option.value) {
+                document.getElementById('salesCustomerPhone').value = option.dataset.phone || '';
+                document.getElementById('salesCustomerAddress').value = option.dataset.address || '';
+            }
+        }
+
+        function addSalesItem() {
+            salesItemCount++;
+            const container = document.getElementById('salesItems');
+            const div = document.createElement('div');
+            div.className = 'sales-item-row';
+            div.draggable = true;
+            div.style.cssText = 'background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 10px;';
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; color: #2563eb;">
+                    <span style="display: flex; align-items: center;"><span class="drag-handle" title="拖拽排序">⋮⋮</span> 序号 ${salesItemCount}</span>
+                    <button onclick="this.closest('.sales-item-row').remove(); renumberSalesItems();" style="background: #dc2626; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px;">删除</button>
+                </div>
+                <div class="sales-item-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                    <input type="text" class="si-name" placeholder="品名" value="黑虎虾" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <input type="text" class="si-spec" placeholder="规格" value="8-10" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <input type="text" class="si-brand" placeholder="品牌" value="蓝琼" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <input type="number" class="si-qty" placeholder="数量/件" oninput="calcSalesItem(this)" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <input type="number" class="si-weight" placeholder="净重/kg" step="0.01" oninput="calcSalesItem(this)" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <select class="si-price-type" onchange="calcSalesItem(this)" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="kg">单价/kg</option>
+                        <option value="piece">单价/件</option>
+                    </select>
+                    <input type="number" class="si-price" placeholder="单价" step="0.01" value="64.5" oninput="calcSalesItem(this)" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                    <input type="text" class="si-total" placeholder="总价" readonly style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; background: #f3f4f6; color: #dc2626; font-weight: bold;">
+                    <input type="text" class="si-remark" placeholder="备注" style="padding: 8px; border: 1px solid #ddd; border-radius: 6px; grid-column: span 2;">
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        function renumberSalesItems() {
+            const rows = document.querySelectorAll('#salesItems > div');
+            rows.forEach((row, index) => {
+                row.querySelector('span').textContent = `序号 ${index + 1}`;
+            });
+            salesItemCount = rows.length;
+        }
+
+        function calcSalesItem(input) {
+            const row = input.closest('.sales-item-row');
+            const qty = parseFloat(row.querySelector('.si-qty').value) || 0;
+            const weight = parseFloat(row.querySelector('.si-weight').value) || 0;
+            const price = parseFloat(row.querySelector('.si-price').value) || 0;
+            const priceType = row.querySelector('.si-price-type').value;
+
+            let total = 0;
+            if (priceType === 'piece') {
+                total = qty * price;
+            } else {
+                total = weight * price * qty;
+            }
+            row.querySelector('.si-total').value = total > 0 ? total.toFixed(2) : '';
+        }
+
+        function numberToChinese(n) {
+            const fraction = ['角', '分'];
+            const digit = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
+            const unit = [['元', '万', '亿'], ['', '拾', '佰', '仟']];
+            const head = n < 0 ? '欠' : '';
+            n = Math.abs(n);
+            let s = '';
+            for (let i = 0; i < fraction.length; i++) {
+                s += (digit[Math.floor(n * 10 * Math.pow(10, i)) % 10] + fraction[i]).replace(/零./, '');
+            }
+            s = s || '整';
+            n = Math.floor(n);
+            for (let i = 0; i < unit[0].length && n > 0; i++) {
+                let p = '';
+                for (let j = 0; j < unit[1].length && n > 0; j++) {
+                    p = digit[n % 10] + unit[1][j] + p;
+                    n = Math.floor(n / 10);
+                }
+                s = p.replace(/(零.)*零$/, '').replace(/^$/, '零') + unit[0][i] + s;
+            }
+            return head + s.replace(/(零.)*零元/, '元').replace(/(零.)+/g, '零').replace(/^整$/, '零元整');
+        }
+
+        
+        // ==================== 拖拽排序功能 ====================
+        function initDragAndDrop() {
+            const container = document.getElementById('salesItems');
+            if (!container) return;
+
+            let draggedItem = null;
+
+            container.addEventListener('dragstart', function(e) {
+                if (e.target.classList.contains('sales-item-row')) {
+                    draggedItem = e.target;
+                    e.target.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                }
+            });
+
+            container.addEventListener('dragend', function(e) {
+                if (e.target.classList.contains('sales-item-row')) {
+                    e.target.classList.remove('dragging');
+                    document.querySelectorAll('.sales-item-row').forEach(item => {
+                        item.classList.remove('drag-over');
+                    });
+                    renumberSalesItems();
+                }
+            });
+
+            container.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                const afterElement = getDragAfterElement(container, e.clientY);
+                if (afterElement == null) {
+                    container.appendChild(draggedItem);
+                } else {
+                    container.insertBefore(draggedItem, afterElement);
+                }
+            });
+        }
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.sales-item-row:not(.dragging)')];
+
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        function saveSalesOrder() {
+            const customerSelect = document.getElementById('salesCustomer');
+            if (!customerSelect.value) { alert('请选择客户'); return; }
+
+            const customerName = customerSelect.options[customerSelect.selectedIndex].text;
+            const date = document.getElementById('salesDate').value;
+            const phone = document.getElementById('salesCustomerPhone').value;
+            const address = document.getElementById('salesCustomerAddress').value;
+
+            const items = [];
+            let totalQty = 0;
+            let totalAmount = 0;
+
+            document.querySelectorAll('#salesItems > div').forEach((row, idx) => {
+                const name = row.querySelector('.si-name').value.trim();
+                const qty = parseFloat(row.querySelector('.si-qty').value) || 0;
+
+                if (name && qty > 0) {
+                    const spec = row.querySelector('.si-spec').value || '';
+                    const brand = row.querySelector('.si-brand').value || '';
+                    const weight = parseFloat(row.querySelector('.si-weight').value) || 0;
+                    const price = parseFloat(row.querySelector('.si-price').value) || 0;
+                    const priceType = row.querySelector('.si-price-type').value;
+                    const total = parseFloat(row.querySelector('.si-total').value) || 0;
+                    const remark = row.querySelector('.si-remark').value || '';
+
+                    items.push({ seq: items.length + 1, name, spec, brand, qty, weight: weight.toFixed(1), priceType, price: price.toFixed(1), total: total.toFixed(2), remark });
+                    totalQty += qty;
+                    totalAmount += total;
+                }
+            });
+
+            if (items.length === 0) { alert('请至少填写一个完整的产品信息'); return; }
+
+            const order = {
+                id: 'SO' + Date.now(),
+                date, customerId: customerSelect.value, customerName, customerPhone: phone, customerAddress: address,
+                items, totalQty, totalAmount, chineseAmount: numberToChinese(totalAmount),
+                paymentStatus: 'unpaid', paidAmount: 0, remainingAmount: totalAmount
+            };
+
+            data.salesOrders.unshift(order);
+            const customer = data.customers.find(c => c.id === customerSelect.value);
+            if (customer) customer.balance = (customer.balance || 0) + totalAmount;
+
+            syncData();
+            showSalesReceipt(order);
+            closeModal('salesModal');
+            renderSalesList();
+        }
+
+        function showSalesReceipt(order) {
+            let tableRows = '';
+            for (let i = 1; i <= 10; i++) {
+                const item = order.items.find(it => it.seq === i);
+                if (item) {
+                    tableRows += `<tr><td class="td-seq">${item.seq}</td><td class="td-product">${item.name}</td><td class="td-spec">${item.spec}</td><td class="td-brand">${item.brand}</td><td class="td-qty">${item.qty}</td><td class="td-weight">${item.weight}</td><td class="td-price">${item.price}</td><td class="td-amount" style="color: #c00; font-weight: bold;">${item.total}</td><td class="td-remark">${item.remark}</td></tr>`;
+                } else {
+                    tableRows += `<tr><td class="td-seq">${i}</td><td class="td-product"></td><td class="td-spec"></td><td class="td-brand"></td><td class="td-qty"></td><td class="td-weight"></td><td class="td-price"></td><td class="td-amount"></td><td class="td-remark"></td></tr>`;
+                }
+            }
+
+            const hasPiecePrice = order.items.some(item => item.priceType === 'piece');
+            const hasKgPrice = order.items.some(item => item.priceType === 'kg');
+            let priceHeaderText = '单价';
+            if (hasPiecePrice && !hasKgPrice) priceHeaderText = '单价/件';
+            else if (!hasPiecePrice && hasKgPrice) priceHeaderText = '单价/kg';
+
+            document.getElementById('salesReceipt').innerHTML = `
+                <div class="sales-list-wrapper">
+                    <div class="sales-list-main-title">佳信水产销售清单</div>
+                    <div class="sales-list-info-section">
+                        <div class="sales-list-info-left">
+                            <div><span class="sales-list-info-label">客户名称:</span>${order.customerName}</div>
+                            <div><span class="sales-list-info-label">电话号码:</span>${order.customerPhone || ''}</div>
+                            <div><span class="sales-list-info-label">收货地址:</span>${order.customerAddress || ''}</div>
+                        </div>
+                        <div class="sales-list-info-right">
+                            <div><span class="sales-list-info-label">经办人:</span>郑佳宝</div>
+                            <div><span class="sales-list-info-label">电话号码:</span>18077761212</div>
+                            <div><span class="sales-list-info-label">发货日期:</span>${order.date}</div>
+                        </div>
+                    </div>
+                    <table class="sales-list-main-table">
+                        <thead>
+                            <tr><th class="td-seq">序号</th><th class="td-product">品名</th><th class="td-spec">规格</th><th class="td-brand">品牌</th><th class="td-qty">数量/件</th><th class="td-weight">净重/kg</th><th class="td-price">${priceHeaderText}</th><th class="td-amount">总价/元</th><th class="td-remark">备注</th></tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                    <table class="sales-list-main-table" style="border-top: none;">
+                        <tr class="sales-list-total-row"><td colspan="4" class="sales-list-total-label">合计数量</td><td class="sales-list-total-qty">${order.totalQty}</td><td colspan="4"></td></tr>
+                        <tr class="sales-list-chinese-row"><td colspan="2" class="sales-list-chinese-label">合计金额大写:</td><td colspan="4" class="sales-list-chinese-amount">${order.chineseAmount}</td><td class="sales-list-number-label">合计金额:</td><td colspan="2" class="sales-list-number-amount">¥${order.totalAmount.toFixed(2)}</td></tr>
+                    </table>
+                    <div class="sales-list-bottom-section">
+                        <div class="sales-list-payment-area">
+                            <div class="sales-list-payment-title">付款信息:</div>
+                            <div class="sales-list-payment-content">
+                                <div>收款姓名: 郑佳宝</div>
+                                <div>收款帐号: 6217003130015812221</div>
+                                <div>收款银行:建设银行（湛江南油一区支行）</div>
+                            </div>
+                        </div>
+                        <div class="sales-list-notice-area">
+                            <div class="sales-list-notice-title">收货提示:</div>
+                            <div class="sales-list-notice-content">
+                                1.请当场核对商品数量、规格及包装完整性，如有问题请立即与我方联系。<br>
+                                2.签收后7日内商品质量无异议，不予退换。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('salesReceiptModal').classList.add('active');
+        }
+
+        function downloadSalesReceipt() {
+            document.getElementById('loading').classList.add('show');
+            const element = document.querySelector('.sales-list-wrapper');
+            html2canvas(element, { scale: 2, backgroundColor: '#ffffff', width: 900, height: element.offsetHeight }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = '销售清单_' + new Date().toISOString().split('T')[0] + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                document.getElementById('loading').classList.remove('show');
+            });
+        }
+
+        function renderSalesList() {
+            const search = document.getElementById('salesSearch').value.toLowerCase();
+            const statusFilter = document.getElementById('salesStatusFilter').value;
+
+            let orders = data.salesOrders;
+            if (search) orders = orders.filter(o => o.id.toLowerCase().includes(search) || o.customerName.toLowerCase().includes(search));
+            if (statusFilter) orders = orders.filter(o => o.paymentStatus === statusFilter);
+
+            const tbody = document.getElementById('salesList');
+            tbody.innerHTML = orders.map(order => {
+                const statusText = { unpaid: '未收款', paid: '已收款', partial: '部分收款' }[order.paymentStatus];
+                const statusClass = { unpaid: 'status-pending', paid: 'status-paid', partial: 'status-partial' }[order.paymentStatus];
+                return `<tr>
+                    <td class="px-6 py-4 text-sm font-medium">${order.id.slice(-6)}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${order.date}</td>
+                    <td class="px-6 py-4 text-sm">${order.customerName}</td>
+                    <td class="px-6 py-4 text-sm font-medium">¥${order.totalAmount.toFixed(2)}</td>
+                    <td class="px-6 py-4"><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td class="px-6 py-4 text-sm space-x-2">
+                        <button onclick="viewSalesReceiptById('${order.id}')" class="text-blue-600 hover:underline">查看</button>
+                        <button onclick="addSalesPayment('${order.id}')" class="text-green-600 hover:underline">收款</button>
+                        <button onclick="showDeleteConfirm('sales', '${order.id}')" class="text-red-600 hover:underline">删除</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function viewSalesReceiptById(orderId) {
+            const order = data.salesOrders.find(o => o.id === orderId);
+            if (order) showSalesReceipt(order);
+        }
+
+        async function addSalesPayment(orderId) {
+            const order = data.salesOrders.find(o => o.id === orderId);
+            if (!order) return;
+            const amount = prompt(`请输入收款金额 (未收: ¥${order.remainingAmount.toFixed(2)}):`);
+            if (!amount || isNaN(amount)) return;
+            const receiveAmount = parseFloat(amount);
+            if (receiveAmount <= 0 || receiveAmount > order.remainingAmount) { alert('金额无效'); return; }
+
+            order.paidAmount += receiveAmount;
+            order.remainingAmount -= receiveAmount;
+            order.paymentStatus = order.remainingAmount <= 0 ? 'paid' : 'partial';
+
+            const customer = data.customers.find(c => c.id === order.customerId);
+            if (customer) customer.balance -= receiveAmount;
+
+            data.transactions.push({
+                id: 'TRX' + Date.now(), date: new Date().toISOString().split('T')[0],
+                type: 'income', partyId: order.customerId, partyName: order.customerName,
+                amount: receiveAmount, remark: `销售单 ${order.id.slice(-6)} 收款`
+            });
+
+            await syncDataSilent();
+            renderSalesList();
+        }
+
+
+        // ==================== 客户/供应商管理 ====================
+        function renderPartyList() {
+            // 计算客户合计欠款
+            const customerTotal = data.customers.reduce((sum, c) => sum + (c.balance || 0), 0);
+            // 计算供应商合计应付款
+            const supplierTotal = data.suppliers.reduce((sum, s) => sum + (s.balance || 0), 0);
+
+            document.getElementById('customerList').innerHTML = data.customers.map(c => `
+                <tr>
+                    <td class="px-4 py-3 text-sm font-medium">${c.name}</td>
+                    <td class="px-4 py-3 text-sm ${c.balance > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}">¥${(c.balance || 0).toFixed(0)}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <button onclick="viewCustomerDetail('${c.id}')" class="text-blue-600 hover:underline mr-2">详情</button>
+                    </td>
+                </tr>
+            `).join('') + `
+                <tr style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-top: 2px solid #f59e0b;">
+                    <td class="px-4 py-3 text-sm font-bold text-amber-800">合计欠款</td>
+                    <td class="px-4 py-3 text-lg font-bold ${customerTotal > 0 ? 'text-red-600' : 'text-gray-600'}">¥${customerTotal.toFixed(0)}</td>
+                    <td class="px-4 py-3 text-sm text-amber-700">共 ${data.customers.length} 位客户</td>
+                </tr>
+            `;
+
+            document.getElementById('supplierList').innerHTML = data.suppliers.map(s => `
+                <tr>
+                    <td class="px-4 py-3 text-sm font-medium">${s.name}</td>
+                    <td class="px-4 py-3 text-sm ${s.balance > 0 ? 'text-red-600 font-bold' : 'text-gray-500'}">¥${(s.balance || 0).toFixed(0)}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <button onclick="viewSupplierDetail('${s.id}')" class="text-blue-600 hover:underline mr-2">详情</button>
+                    </td>
+                </tr>
+            `).join('') + `
+                <tr style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-top: 2px solid #f59e0b;">
+                    <td class="px-4 py-3 text-sm font-bold text-amber-800">合计应付款</td>
+                    <td class="px-4 py-3 text-lg font-bold ${supplierTotal > 0 ? 'text-red-600' : 'text-gray-600'}">¥${supplierTotal.toFixed(0)}</td>
+                    <td class="px-4 py-3 text-sm text-amber-700">共 ${data.suppliers.length} 位供应商</td>
+                </tr>
+            `;
+        }
+
+        function openCustomerModal() {
+            document.getElementById('partyType').value = 'customer';
+            document.getElementById('partyModalTitle').textContent = '新增客户';
+            document.getElementById('partyName').value = '';
+            document.getElementById('partyPhone').value = '';
+            document.getElementById('partyRemark').value = '';
+            document.getElementById('partyModal').classList.add('active');
+        }
+
+        function openSupplierModal() {
+            document.getElementById('partyType').value = 'supplier';
+            document.getElementById('partyModalTitle').textContent = '新增供应商';
+            document.getElementById('partyName').value = '';
+            document.getElementById('partyPhone').value = '';
+            document.getElementById('partyRemark').value = '';
+            document.getElementById('partyModal').classList.add('active');
+        }
+
+        function quickAddSupplier() {
+            openSupplierModal();
+        }
+
+        function quickAddCustomer() {
+            openCustomerModal();
+        }
+
+        function saveParty() {
+            const type = document.getElementById('partyType').value;
+            const name = document.getElementById('partyName').value.trim();
+            if (!name) { alert('请输入名称'); return; }
+
+            const party = {
+                id: type + '_' + Date.now(),
+                name,
+                phone: document.getElementById('partyPhone').value,
+                remark: document.getElementById('partyRemark').value,
+                balance: 0
+            };
+
+            if (type === 'customer') {
+                data.customers.push(party);
+                // 如果销售单模态框是打开的，更新客户下拉框
+                const salesModal = document.getElementById('salesModal');
+                if (salesModal && salesModal.classList.contains('active')) {
+                    const select = document.getElementById('salesCustomer');
+                    const currentValue = select.value;
+                    select.innerHTML = '<option value="">请选择客户</option>' + 
+                        data.customers.map(c => `<option value="${c.id}" data-phone="${c.phone || ''}" data-address="${c.remark || ''}">${c.name}</option>`).join('');
+                    // 恢复之前选中的值，或选中新添加的客户
+                    select.value = currentValue || party.id;
+                    fillCustomerInfo();
+                }
+            } else {
+                data.suppliers.push(party);
+                // 如果采购单模态框是打开的，更新供应商下拉框
+                const purchaseModal = document.getElementById('purchaseModal');
+                if (purchaseModal && purchaseModal.classList.contains('active')) {
+                    const select = document.getElementById('purchaseSupplier');
+                    const currentValue = select.value;
+                    select.innerHTML = '<option value="">请选择供应商</option>' + 
+                        data.suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                    select.value = currentValue || party.id;
+                }
+            }
+
+            syncData();
+            closeModal('partyModal');
+            renderPartyList();
+            alert('保存成功');
+        }
+
+        // ==================== 收付款 ====================
+        function renderTransactionList() {
+            const tbody = document.getElementById('transactionList');
+            tbody.innerHTML = data.transactions.sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => `
+                <tr>
+                    <td class="px-6 py-4 text-sm text-gray-500">${t.date}</td>
+                    <td class="px-6 py-4 text-sm"><span class="status-badge ${t.type === 'income' ? 'status-paid' : 'status-pending'}">${t.type === 'income' ? '收款' : '付款'}</span></td>
+                    <td class="px-6 py-4 text-sm">${t.partyName}</td>
+                    <td class="px-6 py-4 text-sm font-medium ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">${t.type === 'income' ? '+' : '-'}¥${t.amount.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${t.remark || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function openPaymentModal(type) {
+            document.getElementById('paymentModalTitle').textContent = type === 'income' ? '收款登记' : '付款登记';
+            document.getElementById('paymentModal').dataset.type = type;
+
+            const select = document.getElementById('paymentParty');
+            const parties = type === 'income' ? data.customers : data.suppliers;
+            select.innerHTML = '<option value="">请选择</option>' + 
+                parties.map(p => `<option value="${p.id}" data-type="${type === 'income' ? 'customer' : 'supplier'}">${p.name}</option>`).join('');
+
+            document.getElementById('paymentAmount').value = '';
+            document.getElementById('paymentRemark').value = '';
+            document.getElementById('paymentModal').classList.add('active');
+        }
+
+        async function savePayment() {
+            const type = document.getElementById('paymentModal').dataset.type;
+            const partyId = document.getElementById('paymentParty').value;
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+
+            if (!partyId || !amount || amount <= 0) { alert('请填写完整信息'); return; }
+
+            const partySelect = document.getElementById('paymentParty');
+            const partyName = partySelect.options[partySelect.selectedIndex].text;
+            const partyType = partySelect.options[partySelect.selectedIndex].dataset.type;
+
+            data.transactions.push({
+                id: 'TRX' + Date.now(),
+                date: document.getElementById('paymentDate').value,
+                type, partyId, partyName, amount,
+                remark: document.getElementById('paymentRemark').value
+            });
+
+            if (partyType === 'customer') {
+                const customer = data.customers.find(c => c.id === partyId);
+                if (customer) customer.balance = Math.max(0, (customer.balance || 0) - amount);
+            } else {
+                const supplier = data.suppliers.find(s => s.id === partyId);
+                if (supplier) supplier.balance = Math.max(0, (supplier.balance || 0) - amount);
+            }
+
+            await syncDataSilent();
+            closeModal('paymentModal');
+            renderTransactionList();
+            renderPartyList();
+        }
+
+        // ==================== 报表 ====================
+        function updateReports() {
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+            const monthSales = data.salesOrders.filter(o => o.date >= monthStart && o.date <= monthEnd).reduce((sum, o) => sum + o.totalAmount, 0);
+            const monthPurchase = data.purchaseOrders.filter(o => o.date >= monthStart && o.date <= monthEnd).reduce((sum, o) => sum + o.totalAmount, 0);
+            const monthProfit = monthSales - monthPurchase;
+
+            document.getElementById('monthSales').textContent = `¥${monthSales.toFixed(0)}`;
+            document.getElementById('monthPurchase').textContent = `¥${monthPurchase.toFixed(0)}`;
+            document.getElementById('monthProfit').textContent = `¥${monthProfit.toFixed(0)}`;
+        }
+
+        // ==================== 工具函数 ====================
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // ==================== 删除功能 ====================
+        
+        // ==================== 图片处理函数 ====================
+        let purchaseImages = []; // 临时存储待上传的图片
+
+        function handlePurchaseImages(input) {
+            const files = Array.from(input.files);
+            const maxFiles = 5;
+
+            if (purchaseImages.length + files.length > maxFiles) {
+                alert('最多只能上传5张图片');
+                return;
+            }
+
+            files.forEach(file => {
+                if (!file.type.startsWith('image/')) {
+                    alert('请上传图片文件');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    purchaseImages.push({
+                        name: file.name,
+                        data: e.target.result,
+                        size: file.size
+                    });
+                    renderPurchaseImagePreview();
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // 清空input，允许重复选择相同文件
+            input.value = '';
+        }
+
+        function renderPurchaseImagePreview() {
+            const container = document.getElementById('purchaseImagePreview');
+            container.innerHTML = purchaseImages.map((img, index) => `
+                <div class="image-preview-item">
+                    <img src="${img.data}" alt="预览">
+                    <button class="remove-btn" onclick="removePurchaseImage(${index})">×</button>
+                </div>
+            `).join('');
+        }
+
+        function removePurchaseImage(index) {
+            purchaseImages.splice(index, 1);
+            renderPurchaseImagePreview();
+        }
+
+        function clearPurchaseImages() {
+            purchaseImages = [];
+            renderPurchaseImagePreview();
+        }
+
+        function viewOrderImages(orderId, type) {
+            const order = type === 'purchase' 
+                ? data.purchaseOrders.find(o => o.id === orderId)
+                : data.salesOrders.find(o => o.id === orderId);
+
+            if (!order || !order.images || order.images.length === 0) {
+                alert('该订单没有上传图片');
+                return;
+            }
+
+            const container = document.getElementById('imageViewerContainer');
+            if (order.images.length === 1) {
+                container.innerHTML = `<img src="${order.images[0].data}" class="image-viewer-single" onclick="closeModal('imageViewerModal')">`;
+            } else {
+                container.innerHTML = order.images.map(img => `
+                    <img src="${img.data}" class="image-viewer-item" style="max-width: 45%;" onclick="closeModal('imageViewerModal')">
+                `).join('');
+            }
+
+            document.getElementById('imageViewerModal').classList.add('active');
+        }
+
+        // 修改savePurchaseOrder函数，添加图片保存
+function showDeleteConfirm(type, orderId) {
+            deleteTarget = { type, orderId };
+            const typeText = type === 'purchase' ? '采购单（收购单）' : '销售单（销售清单）';
+            document.getElementById('deleteTypeText').textContent = typeText;
+            document.getElementById('deleteOrderId').textContent = orderId;
+            document.getElementById('deletePassword').value = '';
+            document.getElementById('deleteConfirmModal').classList.add('active');
+        }
+
+        function confirmDelete() {
+            const password = document.getElementById('deletePassword').value;
+            if (password !== CONFIG.DELETE_PASSWORD) {
+                alert('密码错误，删除失败');
+                return;
+            }
+
+            const { type, orderId } = deleteTarget;
+
+            if (type === 'purchase') {
+                deletePurchaseOrder(orderId);
+            } else if (type === 'sales') {
+                deleteSalesOrder(orderId);
+            }
+
+            closeModal('deleteConfirmModal');
+        }
+
+        async function deletePurchaseOrder(orderId) {
+            const orderIndex = data.purchaseOrders.findIndex(o => o.id === orderId);
+            if (orderIndex === -1) {
+                alert('订单不存在');
+                return;
+            }
+
+            const order = data.purchaseOrders[orderIndex];
+
+            // 如果订单有欠款，需要更新供应商余额
+            if (order.remainingAmount > 0) {
+                const supplier = data.suppliers.find(s => s.id === order.supplierId);
+                if (supplier) {
+                    supplier.balance = Math.max(0, (supplier.balance || 0) - order.remainingAmount);
+                }
+            }
+
+            // 删除相关交易记录
+            data.transactions = data.transactions.filter(t => 
+                !(t.remark && t.remark.includes(order.docNumber))
+            );
+
+            // 删除订单
+            data.purchaseOrders.splice(orderIndex, 1);
+
+            // 先更新界面，再同步数据
+            renderPurchaseList();
+            updateDashboard();
+
+            // 同步到云端（静默同步，不弹窗）
+            await syncDataSilent();
+
+            // 删除成功
+        }
+
+        async function deleteSalesOrder(orderId) {
+            const orderIndex = data.salesOrders.findIndex(o => o.id === orderId);
+            if (orderIndex === -1) {
+                alert('订单不存在');
+                return;
+            }
+
+            const order = data.salesOrders[orderIndex];
+
+            // 如果订单有欠款，需要更新客户余额
+            if (order.remainingAmount > 0) {
+                const customer = data.customers.find(c => c.id === order.customerId);
+                if (customer) {
+                    customer.balance = Math.max(0, (customer.balance || 0) - order.remainingAmount);
+                }
+            }
+
+            // 删除相关交易记录
+            data.transactions = data.transactions.filter(t => 
+                !(t.remark && t.remark.includes(order.id.slice(-6)))
+            );
+
+            // 删除订单
+            data.salesOrders.splice(orderIndex, 1);
+
+            // 先更新界面，再同步数据
+            renderSalesList();
+            updateDashboard();
+
+            // 同步到云端（静默同步，不弹窗）
+            await syncDataSilent();
+
+            // 删除成功
+        }
+
+        // 点击模态框外部关闭
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) this.classList.remove('active');
+            });
+        });
+    </script>
+
+    <!-- 删除确认模态框 -->
+    <div id="deleteConfirmModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-xl font-bold text-red-600">⚠️ 删除确认</h3>
+                <button onclick="closeModal('deleteConfirmModal')" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-gray-700">您正在删除<span id="deleteTypeText" class="font-bold text-red-600"></span></p>
+                <p class="text-sm text-gray-500">单号: <span id="deleteOrderId" class="font-mono"></span></p>
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <label class="block text-sm font-medium text-red-800 mb-2">请输入删除密码</label>
+                    <input type="password" id="deletePassword" class="w-full px-3 py-2 border border-red-300 rounded-lg focus:border-red-500 focus:ring-1 focus:ring-red-500" placeholder="输入密码...">
+                    <p class="text-xs text-red-600 mt-1">* 删除后数据无法恢复，请谨慎操作</p>
+                </div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button onclick="closeModal('deleteConfirmModal')" class="px-4 py-2 border rounded-lg hover:bg-gray-50">取消</button>
+                    <button onclick="confirmDelete()" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">确认删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
