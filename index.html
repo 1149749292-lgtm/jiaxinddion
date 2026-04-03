@@ -2082,6 +2082,7 @@ async function initCloudSync() {
     if (!navigator.onLine) {
         updateSyncUI('offline', '离线');
         console.log('[云端] 设备离线，使用本地模式');
+        startAutoSync(); // 即使离线也启动自动同步监听
         return;
     }
 
@@ -2089,13 +2090,16 @@ async function initCloudSync() {
         await loadFromCloud();
         isOnline = true;
         updateSyncUI('online', '已同步');
-        console.log('[云端] 同步成功');
-        startAutoSync();
+        console.log('[云端] 初始同步成功');
     } catch (err) {
-        console.error('[云端] 同步失败:', err);
-        isOnline = false;
-        updateSyncUI('offline', '未连接');
+        console.error('[云端] 初始同步失败:', err);
+        // 即使失败也设置为在线，允许后续同步尝试
+        isOnline = true;
+        updateSyncUI('online', '已同步(本地)');
     }
+
+    // 无论成功与否，都启动自动同步
+    startAutoSync();
 }
 
 // 更新同步状态UI
@@ -2160,19 +2164,39 @@ async function loadFromCloud() {
 
 // 保存到云端
 async function syncToCloud() {
-    if (isSyncing || !isOnline || !navigator.onLine) {
-        if (!isSyncing) syncQueue.push(Date.now());
+    console.log('[云端] 开始同步...', { isSyncing, isOnline, online: navigator.onLine });
+
+    if (isSyncing) {
+        console.log('[云端] 正在同步中，跳过');
         return;
     }
 
+    if (!navigator.onLine) {
+        console.log('[云端] 设备离线，跳过同步');
+        updateSyncUI('offline', '离线');
+        return;
+    }
+
+    // 即使 isOnline 为 false，也尝试同步（可能是首次同步）
     isSyncing = true;
     updateSyncUI('syncing', '同步中...');
 
     try {
         const data = {
-            suppliers, customers, purchaseOrders, salesOrders, salesLists,
+            suppliers,
+            customers,
+            purchaseOrders,
+            salesOrders,
+            salesLists,
             lastUpdated: new Date().toISOString()
         };
+
+        console.log('[云端] 发送数据:', { 
+            suppliers: suppliers.length, 
+            customers: customers.length,
+            purchaseOrders: purchaseOrders.length,
+            salesOrders: salesOrders.length
+        });
 
         const response = await fetch(API_URL, {
             method: 'PUT',
@@ -2183,15 +2207,25 @@ async function syncToCloud() {
             body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('同步失败');
+        console.log('[云端] 响应状态:', response.status);
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[云端] 响应错误:', errorText);
+            throw new Error('同步失败: ' + response.status);
+        }
+
+        const result = await response.json();
+        console.log('[云端] 同步成功:', result);
+
+        isOnline = true;
         updateSyncUI('online', '已同步');
         syncQueue = [];
 
     } catch (err) {
         console.error('[云端] 同步失败:', err);
         updateSyncUI('offline', '同步失败');
-        isOnline = false;
+        // 不要设置 isOnline = false，允许重试
     } finally {
         isSyncing = false;
     }
@@ -2208,11 +2242,15 @@ function startAutoSync() {
     let lastData = JSON.stringify({ suppliers, customers, purchaseOrders, salesOrders, salesLists });
 
     setInterval(() => {
-        if (!isOnline || !navigator.onLine) return;
+        if (!navigator.onLine) {
+            console.log('[云端] 设备离线，跳过同步检查');
+            return;
+        }
 
         const currentData = JSON.stringify({ suppliers, customers, purchaseOrders, salesOrders, salesLists });
         if (currentData !== lastData) {
-            console.log('[云端] 检测到数据变化，自动同步...');
+            console.log('[云端] 检测到数据变化，准备同步...');
+            console.log('[云端] 当前状态:', { isOnline, isSyncing });
             syncToCloud();
             lastData = currentData;
         }
@@ -2233,14 +2271,21 @@ function startAutoSync() {
 
 // 保存到本地（skipSync=true 时不同步到云端）
 function saveToLocal(skipSync = false) {
+    console.log('[本地] 保存数据到本地存储...');
+
     localStorage.setItem('suppliers', JSON.stringify(suppliers));
     localStorage.setItem('customers', JSON.stringify(customers));
     localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
     localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
     localStorage.setItem('salesLists', JSON.stringify(salesLists));
 
+    console.log('[本地] 数据已保存到本地');
+
     if (!skipSync) {
+        console.log('[本地] 触发云端同步...');
         syncToCloud();
+    } else {
+        console.log('[本地] 跳过云端同步（从云端加载时）');
     }
 }
 
