@@ -2061,7 +2061,223 @@
         let salesLists = JSON.parse(localStorage.getItem('salesLists') || '[]');
         // 云端同步功能已启用
 
-        let isSyncing = false, currentEntityType = '';
+        let isSyncing = false;
+// ============================================
+// 云端同步系统 - 自动同步版（新）
+// ============================================
+
+// 初始化云端同步 - 页面打开自动执行
+async function initCloudSync() {
+    updateSyncUI('syncing', '正在连接云端...');
+
+    if (!navigator.onLine) {
+        updateSyncUI('offline', '离线模式');
+        showToast('⚠️ 设备离线，使用本地数据', 'warning');
+        return;
+    }
+
+    try {
+        await loadFromCloud();
+        isOnline = true;
+        updateSyncUI('online', '云端已同步');
+        showToast('✅ 云端数据同步成功');
+    } catch (err) {
+        console.error('云端同步失败:', err);
+        isOnline = false;
+        updateSyncUI('offline', '同步失败，使用本地');
+        showToast('⚠️ 云端同步失败，使用本地数据', 'warning');
+    }
+}
+
+// 更新同步状态UI
+function updateSyncUI(status, text) {
+    const badge = document.getElementById('syncBadge');
+    const indicator = document.getElementById('syncIndicator');
+    const syncText = document.getElementById('syncText');
+
+    if (!badge || !indicator || !syncText) return;
+
+    syncText.textContent = text;
+
+    // 重置样式
+    badge.style.background = '';
+    badge.style.opacity = '';
+    indicator.style.animation = '';
+
+    switch(status) {
+        case 'online':
+            badge.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            badge.style.opacity = '1';
+            indicator.style.background = '#fff';
+            break;
+        case 'syncing':
+            badge.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+            badge.style.opacity = '1';
+            indicator.style.animation = 'pulse 1.5s infinite';
+            break;
+        case 'offline':
+            badge.style.background = 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+            badge.style.opacity = '0.8';
+            indicator.style.background = '#9ca3af';
+            break;
+    }
+}
+
+// 从云端加载数据（新）
+async function loadFromCloud() {
+    showLoading('正在从云端加载数据...');
+
+    try {
+        const response = await fetch(`${API_URL}/latest`, {
+            method: 'GET',
+            headers: { 'X-Master-Key': MASTER_KEY }
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                // 如果bin不存在，创建初始数据
+                await createInitialBin();
+                hideLoading();
+                return;
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const data = result.record;
+
+        // 合并云端数据到本地（云端优先）
+        if (data.suppliers && data.suppliers.length > 0) suppliers = data.suppliers;
+        if (data.customers && data.customers.length > 0) customers = data.customers;
+        if (data.purchaseOrders && data.purchaseOrders.length > 0) purchaseOrders = data.purchaseOrders;
+        if (data.salesOrders && data.salesOrders.length > 0) salesOrders = data.salesOrders;
+        if (data.salesLists && data.salesLists.length > 0) salesLists = data.salesLists;
+
+        // 保存到本地存储
+        localStorage.setItem('suppliers', JSON.stringify(suppliers));
+        localStorage.setItem('customers', JSON.stringify(customers));
+        localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+        localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+        localStorage.setItem('salesLists', JSON.stringify(salesLists));
+
+        // 更新UI
+        updateHomeStats();
+        updateAllSelects();
+
+        hideLoading();
+        console.log('[云端] 数据加载成功');
+
+    } catch (err) {
+        hideLoading();
+        throw err;
+    }
+}
+
+// 创建初始云端数据
+async function createInitialBin() {
+    try {
+        const data = {
+            suppliers: suppliers,
+            customers: customers,
+            purchaseOrders: purchaseOrders,
+            salesOrders: salesOrders,
+            salesLists: salesLists,
+            version: '5.0',
+            lastUpdated: new Date().toISOString()
+        };
+
+        const response = await fetch(API_URL, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': MASTER_KEY
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) throw new Error('创建初始数据失败');
+
+        console.log('[云端] 初始数据创建成功');
+    } catch (err) {
+        console.error('创建初始数据失败:', err);
+        throw err;
+    }
+}
+
+// 同步数据到云端（新）
+async function syncToCloud() {
+    if (isSyncing || !isOnline) return;
+
+    isSyncing = true;
+    updateSyncUI('syncing', '正在同步...');
+
+    try {
+        const data = {
+            suppliers: suppliers,
+            customers: customers,
+            purchaseOrders: purchaseOrders,
+            salesOrders: salesOrders,
+            salesLists: salesLists,
+            version: '5.0',
+            lastUpdated: new Date().toISOString()
+        };
+
+        const response = await fetch(API_URL, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': MASTER_KEY
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) throw new Error('同步失败');
+
+        updateSyncUI('online', '云端已同步');
+        console.log('[云端] 数据同步成功');
+
+    } catch (err) {
+        console.error('同步到云端失败:', err);
+        updateSyncUI('offline', '同步失败');
+    } finally {
+        isSyncing = false;
+    }
+}
+
+// 手动触发同步（用于刷新按钮）
+async function manualSync() {
+    if (!navigator.onLine) {
+        showToast('⚠️ 设备离线', 'warning');
+        return;
+    }
+
+    updateSyncUI('syncing', '正在刷新...');
+
+    try {
+        await loadFromCloud();
+        showToast('✅ 数据已刷新');
+    } catch (err) {
+        showToast('❌ 刷新失败', 'error');
+    }
+}
+
+// 更新所有下拉框
+function updateAllSelects() {
+    loadSupplierSelect();
+    loadCustomerSelect();
+    loadCustomerSelectForList();
+}
+
+// 全局同步函数
+function syncAllSelects() {
+    loadSupplierSelect();
+    loadCustomerSelect();
+    loadCustomerSelectForList();
+}
+
+
+let isOnline = false;
+let currentEntityType = '';
         let currentEntityId = null;
         let supplierFilter = 'all';
         let customerFilter = 'all';
@@ -2072,26 +2288,25 @@
         let salesItemCount = 0;
 
         // 初始化
-        // 云端同步配置
-        const JSONBIN_CONFIG = {
-            MASTER_KEY: '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu',
-            BASE_URL: 'https://api.jsonbin.io/v3',
-            BIN_ID: localStorage.getItem('jsonbin_id') || null
-        };
+        // ============================================
+// 云端同步配置 - 使用固定BIN_ID，打开自动同步
+// ============================================
+const BIN_ID = '69c7eeb45fdde574550ab18e';
+const MASTER_KEY = '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu';
+const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
 document.addEventListener('DOMContentLoaded', function() {
             console.log('[系统] 启动中...');
             updateHomeStats();
             document.getElementById('purchaseDate').value = today();
-            document.getElementById('salesDate').value = today();
+            document.getElementById('listDate').value = today();
             document.getElementById('historyStartDate').value = getFirstDayOfMonth();
             document.getElementById('historyEndDate').value = today();
             document.getElementById('statMonth').value = today().substring(0, 7);
             initPurchaseTable();
-            // 自动同步
-            if (navigator.onLine && localStorage.getItem('jsonbin_id')) {
-                setTimeout(loadFromCloud, 1000);
-            }
+
+            // 自动从云端加载数据（无需点击，打开即同步）
+            initCloudSync();
         });
 
         function today() {
