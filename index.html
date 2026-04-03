@@ -1594,14 +1594,10 @@
         <!-- 首页 -->
         <div id="homePage" class="page active">
             <div class="header" style="position: relative;">
-                <div style="position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);">
-                    <span style="width: 8px; height: 8px; background: #fff; border-radius: 50%; animation: pulse 2s infinite;"></span>
-                    <span>云端已同步</span>
-                    <span style="cursor: pointer;" onclick="location.reload()">🔄</span>
-                </div>
-                <div id="syncBadge" onclick="manualSync()" style="position: absolute; top: -10px; right: 0; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; opacity: 0.6; z-index: 100;">
-                <span id="syncIndicator" style="width: 8px; height: 8px; background: #fff; border-radius: 50%;"></span>
-                <span id="syncText">本地模式</span>
+                
+                <div id="syncBadge" onclick="manualSync()" style="position: absolute; top: -5px; right: 0; display: flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.3s ease; z-index: 100;">
+                <span id="syncIndicator" style="width: 8px; height: 8px; background: #fff; border-radius: 50%; transition: all 0.3s ease;"></span>
+                <span id="syncText">连接中...</span>
             </div>
             <h1>📦 佳信水产</h1>
                 <p>智能订单管理系统</p>
@@ -2063,29 +2059,42 @@
 
         let isSyncing = false;
 // ============================================
-// 云端同步系统 - 自动同步版（新）
+// 云端同步系统 - 全自动版
 // ============================================
 
-// 初始化云端同步 - 页面打开自动执行
+const BIN_ID = '69c7eeb45fdde574550ab18e';
+const MASTER_KEY = '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu';
+const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+let isOnline = false;
+let syncQueue = [];
+
+// 初始化 - 页面加载时自动执行
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[云端] 初始化同步系统...');
+    initCloudSync();
+});
+
+// 自动同步入口
 async function initCloudSync() {
-    updateSyncUI('syncing', '正在连接云端...');
+    updateSyncUI('syncing', '连接中...');
 
     if (!navigator.onLine) {
-        updateSyncUI('offline', '离线模式');
-        showToast('⚠️ 设备离线，使用本地数据', 'warning');
+        updateSyncUI('offline', '离线');
+        console.log('[云端] 设备离线，使用本地模式');
         return;
     }
 
     try {
         await loadFromCloud();
         isOnline = true;
-        updateSyncUI('online', '云端已同步');
-        showToast('✅ 云端数据同步成功');
+        updateSyncUI('online', '已同步');
+        console.log('[云端] 同步成功');
+        startAutoSync();
     } catch (err) {
-        console.error('云端同步失败:', err);
+        console.error('[云端] 同步失败:', err);
         isOnline = false;
-        updateSyncUI('offline', '同步失败，使用本地');
-        showToast('⚠️ 云端同步失败，使用本地数据', 'warning');
+        updateSyncUI('offline', '未连接');
     }
 }
 
@@ -2098,127 +2107,70 @@ function updateSyncUI(status, text) {
     if (!badge || !indicator || !syncText) return;
 
     syncText.textContent = text;
-
-    // 重置样式
-    badge.style.background = '';
-    badge.style.opacity = '';
-    indicator.style.animation = '';
+    indicator.style.animation = 'none';
 
     switch(status) {
         case 'online':
             badge.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
-            badge.style.opacity = '1';
+            badge.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.3)';
             indicator.style.background = '#fff';
             break;
         case 'syncing':
             badge.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
-            badge.style.opacity = '1';
+            badge.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)';
+            indicator.style.background = '#fff';
             indicator.style.animation = 'pulse 1.5s infinite';
             break;
         case 'offline':
             badge.style.background = 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
-            badge.style.opacity = '0.8';
+            badge.style.boxShadow = '0 2px 8px rgba(107, 114, 128, 0.3)';
             indicator.style.background = '#9ca3af';
             break;
     }
 }
 
-// 从云端加载数据（新）
+// 从云端加载数据
 async function loadFromCloud() {
-    showLoading('正在从云端加载数据...');
+    const response = await fetch(`${API_URL}/latest`, {
+        method: 'GET',
+        headers: { 'X-Master-Key': MASTER_KEY }
+    });
 
-    try {
-        const response = await fetch(`${API_URL}/latest`, {
-            method: 'GET',
-            headers: { 'X-Master-Key': MASTER_KEY }
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                // 如果bin不存在，创建初始数据
-                await createInitialBin();
-                hideLoading();
-                return;
-            }
-            throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+        if (response.status === 404) {
+            await createInitialData();
+            return;
         }
-
-        const result = await response.json();
-        const data = result.record;
-
-        // 合并云端数据到本地（云端优先）
-        if (data.suppliers && data.suppliers.length > 0) suppliers = data.suppliers;
-        if (data.customers && data.customers.length > 0) customers = data.customers;
-        if (data.purchaseOrders && data.purchaseOrders.length > 0) purchaseOrders = data.purchaseOrders;
-        if (data.salesOrders && data.salesOrders.length > 0) salesOrders = data.salesOrders;
-        if (data.salesLists && data.salesLists.length > 0) salesLists = data.salesLists;
-
-        // 保存到本地存储
-        localStorage.setItem('suppliers', JSON.stringify(suppliers));
-        localStorage.setItem('customers', JSON.stringify(customers));
-        localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
-        localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
-        localStorage.setItem('salesLists', JSON.stringify(salesLists));
-
-        // 更新UI
-        updateHomeStats();
-        updateAllSelects();
-
-        hideLoading();
-        console.log('[云端] 数据加载成功');
-
-    } catch (err) {
-        hideLoading();
-        throw err;
+        throw new Error(`HTTP ${response.status}`);
     }
+
+    const result = await response.json();
+    const data = result.record;
+
+    if (data.suppliers) suppliers = data.suppliers;
+    if (data.customers) customers = data.customers;
+    if (data.purchaseOrders) purchaseOrders = data.purchaseOrders;
+    if (data.salesOrders) salesOrders = data.salesOrders;
+    if (data.salesLists) salesLists = data.salesLists;
+
+    saveToLocal(true);
+    updateHomeStats();
+    updateAllSelects();
 }
 
-// 创建初始云端数据
-async function createInitialBin() {
-    try {
-        const data = {
-            suppliers: suppliers,
-            customers: customers,
-            purchaseOrders: purchaseOrders,
-            salesOrders: salesOrders,
-            salesLists: salesLists,
-            version: '5.0',
-            lastUpdated: new Date().toISOString()
-        };
-
-        const response = await fetch(API_URL, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': MASTER_KEY
-            },
-            body: JSON.stringify(data)
-        });
-
-        if (!response.ok) throw new Error('创建初始数据失败');
-
-        console.log('[云端] 初始数据创建成功');
-    } catch (err) {
-        console.error('创建初始数据失败:', err);
-        throw err;
-    }
-}
-
-// 同步数据到云端（新）
+// 保存到云端
 async function syncToCloud() {
-    if (isSyncing || !isOnline) return;
+    if (isSyncing || !isOnline || !navigator.onLine) {
+        if (!isSyncing) syncQueue.push(Date.now());
+        return;
+    }
 
     isSyncing = true;
-    updateSyncUI('syncing', '正在同步...');
+    updateSyncUI('syncing', '同步中...');
 
     try {
         const data = {
-            suppliers: suppliers,
-            customers: customers,
-            purchaseOrders: purchaseOrders,
-            salesOrders: salesOrders,
-            salesLists: salesLists,
-            version: '5.0',
+            suppliers, customers, purchaseOrders, salesOrders, salesLists,
             lastUpdated: new Date().toISOString()
         };
 
@@ -2233,25 +2185,73 @@ async function syncToCloud() {
 
         if (!response.ok) throw new Error('同步失败');
 
-        updateSyncUI('online', '云端已同步');
-        console.log('[云端] 数据同步成功');
+        updateSyncUI('online', '已同步');
+        syncQueue = [];
 
     } catch (err) {
-        console.error('同步到云端失败:', err);
+        console.error('[云端] 同步失败:', err);
         updateSyncUI('offline', '同步失败');
+        isOnline = false;
     } finally {
         isSyncing = false;
     }
 }
 
-// 手动触发同步（用于刷新按钮）
+// 创建初始数据
+async function createInitialData() {
+    console.log('[云端] 创建初始数据...');
+    await syncToCloud();
+}
+
+// 启动自动同步
+function startAutoSync() {
+    let lastData = JSON.stringify({ suppliers, customers, purchaseOrders, salesOrders, salesLists });
+
+    setInterval(() => {
+        if (!isOnline || !navigator.onLine) return;
+
+        const currentData = JSON.stringify({ suppliers, customers, purchaseOrders, salesOrders, salesLists });
+        if (currentData !== lastData) {
+            console.log('[云端] 检测到数据变化，自动同步...');
+            syncToCloud();
+            lastData = currentData;
+        }
+    }, 3000);
+
+    window.addEventListener('online', () => {
+        console.log('[云端] 网络恢复，重新连接...');
+        updateSyncUI('syncing', '重新连接...');
+        setTimeout(initCloudSync, 1000);
+    });
+
+    window.addEventListener('offline', () => {
+        console.log('[云端] 网络断开');
+        isOnline = false;
+        updateSyncUI('offline', '离线');
+    });
+}
+
+// 保存到本地（skipSync=true 时不同步到云端）
+function saveToLocal(skipSync = false) {
+    localStorage.setItem('suppliers', JSON.stringify(suppliers));
+    localStorage.setItem('customers', JSON.stringify(customers));
+    localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+    localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
+    localStorage.setItem('salesLists', JSON.stringify(salesLists));
+
+    if (!skipSync) {
+        syncToCloud();
+    }
+}
+
+// 手动刷新
 async function manualSync() {
     if (!navigator.onLine) {
         showToast('⚠️ 设备离线', 'warning');
         return;
     }
 
-    updateSyncUI('syncing', '正在刷新...');
+    updateSyncUI('syncing', '刷新中...');
 
     try {
         await loadFromCloud();
@@ -2261,55 +2261,60 @@ async function manualSync() {
     }
 }
 
-// 更新所有下拉框
+// 显示提示
+function showToast(message, type = 'info') {
+    let toast = document.getElementById('syncToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'syncToast';
+        toast.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 9999;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(-10px);
+            color: white;
+        `;
+        document.body.appendChild(toast);
+    }
+
+    const colors = {
+        success: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+        warning: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        error: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        info: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+    };
+
+    toast.style.background = colors[type] || colors.info;
+    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    toast.textContent = message;
+
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+    });
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+    }, 3000);
+}
+
+// 更新下拉框
 function updateAllSelects() {
     loadSupplierSelect();
     loadCustomerSelect();
     loadCustomerSelectForList();
 }
 
-// 全局同步函数
-function syncAllSelects() {
-    loadSupplierSelect();
-    loadCustomerSelect();
-    loadCustomerSelectForList();
-}
 
-
-let isOnline = false;
-let currentEntityType = '';
-        let currentEntityId = null;
-        let supplierFilter = 'all';
-        let customerFilter = 'all';
-        let historyTab = 'purchase';
-        let historyStatusFilter = 'all';
-        let statTab = 'supplier';
-        let purchaseRowCount = 0;
-        let salesItemCount = 0;
-
-        // 初始化
-        // ============================================
-// 云端同步配置 - 使用固定BIN_ID，打开自动同步
-// ============================================
-const BIN_ID = '69c7eeb45fdde574550ab18e';
-const MASTER_KEY = '$2a$10$42R1HUnhc8El3s8IEf4sO.j6KnDq9wF/7gkHB1trcltILhKXafovu';
-const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-
-document.addEventListener('DOMContentLoaded', function() {
-            console.log('[系统] 启动中...');
-            updateHomeStats();
-            document.getElementById('purchaseDate').value = today();
-            document.getElementById('listDate').value = today();
-            document.getElementById('historyStartDate').value = getFirstDayOfMonth();
-            document.getElementById('historyEndDate').value = today();
-            document.getElementById('statMonth').value = today().substring(0, 7);
-            initPurchaseTable();
-
-            // 自动从云端加载数据（无需点击，打开即同步）
-            initCloudSync();
-        });
-
-        function today() {
+function today() {
             return new Date().toISOString().split('T')[0];
         }
 
@@ -2542,8 +2547,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('保存订单:', order);
 
                 purchaseOrders.unshift(order);
-                localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
-            syncToCloud();
+            
 
                 showPurchaseReceipt(order);
                 initPurchaseTable();
@@ -3035,14 +3039,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const index = purchaseOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     purchaseOrders.splice(index, 1);
-                    localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
                 }
             } else {
                 const index = salesOrders.findIndex(o => o.id === orderId);
                 if (index > -1) {
                     salesOrders.splice(index, 1);
-                    localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
-            syncToCloud();
+            
                 }
             }
 
@@ -3216,8 +3218,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (currentEntityType === 'supplier') {
                 suppliers.push(entity);
-                localStorage.setItem('suppliers', JSON.stringify(suppliers));
-            syncToCloud();
+                saveToLocal();
+            
                 renderSuppliersList();
                 loadSupplierSelect();
                 // 同步到销售清单的客户选择（如果是从销售清单添加）
@@ -3228,8 +3230,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('✓ 供应商已保存：' + name);
             } else {
                 customers.push(entity);
-                localStorage.setItem('customers', JSON.stringify(customers));
-            syncToCloud();
+            
                 renderCustomersList();
                 loadCustomerSelect();
                 // 同步到销售清单的客户选择
@@ -3446,7 +3447,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // 保存到销售订单中（使用salesOrders数组）
             salesOrders.unshift(order);
-            localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
 
             showSalesListReceipt(order);
         }
@@ -3703,11 +3703,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.purchaseOrders) purchaseOrders = data.purchaseOrders;
                 if (data.salesOrders) salesOrders = data.salesOrders;
                 if (data.salesLists) salesLists = data.salesLists;
-                localStorage.setItem('suppliers', JSON.stringify(suppliers));
-                localStorage.setItem('customers', JSON.stringify(customers));
-                localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
-                localStorage.setItem('salesOrders', JSON.stringify(salesOrders));
-                localStorage.setItem('salesLists', JSON.stringify(salesLists));
+                saveToLocal();
                 showSyncStatus('已同步', 'success');
                 updateHomeStats();
             } catch (e) {
@@ -3743,7 +3739,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 if (!res.ok) throw new Error('创建失败');
                 const result = await res.json();
-                localStorage.setItem('jsonbin_id', result.metadata.id);
                 showSyncStatus('云端已连接', 'success');
             } catch (e) {
                 showSyncStatus('连接失败', 'error');
